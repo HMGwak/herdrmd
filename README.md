@@ -4,6 +4,8 @@ Herdr 안에서 Obsidian Vault의 Markdown을 읽고 편집하고, 에이전트�
 
 현재는 **00 연결 검증용 HTTP 서비스와 Herdr mod**를 구현하는 단계다. 인증된 GET·한글 POST echo, 분리 실행·재사용·종료와 UI 이벤트 관찰만 제공한다. Vault 접근·파일 저장·일반 에이전트 CLI·초안은 아직 구현하지 않았다.
 
+Windows에서 `no mod folder`가 보이면 [Windows 설치 안내](docs/windows-bridge.md)를 따른다. mod는 각 데스크톱 클라이언트에 설치해야 하며, Mac의 Space·탭에 연결하는 것만으로 Windows에 설치되지는 않는다.
+
 ```sh
 cargo run -p herdrmd
 cargo fmt --check

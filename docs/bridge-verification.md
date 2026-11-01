@@ -29,6 +29,8 @@ mod가 Herdr의 `exec`로 ensure를 실행한 뒤 연결 파일을 읽고 인증
 
 mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 현재 exec에는 원격 대상이 없고 HTTP는 그 클라이언트의 loopback을 사용한다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
 
+Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성공한 push CI는 실행 파일·JS·설치 안내가 포함된 `herdrmd-bridge-windows` artifact를 제공한다. 다른 OS의 절대 경로가 탭 props에 공유되면 mod는 현재 클라이언트의 mod 폴더 안 실행 파일을 선택하고, `bridge location`으로 OS 임시 상태 경로를 조회한다. 사용자 설정·Vault에 토큰을 복사하지 않는다.
+
 실제 입력·링크·탭 검증 순서는 다음과 같다.
 
 1. 편집기에 합성 한글 문장을 입력하고 `native changes` 증가와 왕복 성공을 확인한다. IME 입력도 직접 확인한다.
@@ -61,7 +63,9 @@ macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아
 | 탭 전환·복귀 | 같은 입력·카운터 유지, closed 이벤트 없음 |
 | 검증 탭 종료 콜백 | Terra가 만든 별도 탭의 initialized → closed 확인. 기존 탭은 closed 없이 유지되고 동일 서비스 PID 생존 |
 | 직접 한글 입력·IME와 실제 링크 클릭 | 사용자 확인 대기 |
-| macOS·Windows CI | push 후 확인 예정 |
+| macOS·Windows CI | [81e74d7의 실행](https://github.com/HMGwak/herdrmd/actions/runs/41281827654)에서 양쪽 성공. 각각 프로세스 테스트 3개 통과 |
 | 실제 Windows Herdr UI·10분 idle 종료 | 미검증 |
 
 실행 중인 mod에서는 init의 첫 인수로 props를 받지 못하는 현상을 확인해 `herdr.props()`로 읽는다. 초기 check 성공만으로 비동기 초기화 성공을 판단하지 않는다. 이 실험에서 사용한 UI와 콜백은 제품 편집기나 복구 보장이 아니다.
+
+초기 Windows CI에서는 프로세스 테스트가 2분 제한에 걸렸다. Windows launcher를 `CreateProcessW`의 `bInheritHandles=FALSE`로 바꾸고 프로세스·스레드 HANDLE의 소유권을 관리한다. 상속 가능한 출력 HANDLE을 전달하는 Windows 회귀 검사와 한글·공백 상태 경로 검증을 포함해 재검증했다. 단순 빌드 성공을 Windows 실행 검증으로 보고하지 않는다.

@@ -32,7 +32,8 @@ export default class BridgeProbe extends View {
     });
     cx.spawn(async (cx) => {
       try {
-        const windows = process.platform === "win32";
+        const windows = process.platform === "win32" || process.platform === "windows" ||
+          /^(?:[a-z]:[\\/]|\\\\)/i.test(appHome());
         const localPath = (value) => typeof value === "string" &&
           (windows ? /^(?:[a-z]:[\\/]|\\\\)/i.test(value) : value.startsWith("/"));
         // Shared tabs may carry another client's paths. Use a locally installed
