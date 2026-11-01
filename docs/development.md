@@ -8,7 +8,7 @@ cargo fmt --check
 cargo check --workspace --locked
 cargo build --workspace --locked
 cargo test --workspace --locked
-node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs
+node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs
 ```
 
 인수 없는 실행은 도움말이다. 통합 테스트는 임시 상태 폴더에서 인증·한글 echo·분리 실행·동시 ensure·종료를 검증한다. 읽기 코어·CLI 테스트는 합성 Vault에서 원문·revision·경계·제외 규칙과 symlink/Windows junction 거부를 검사한다. 저장 실패와 복구는 후속이다. 새 의존성을 도입할 때 호환 버전을 검증하고 `Cargo.lock`을 갱신·커밋한다. 원문 revision에는 BLAKE3를 도입했으며 `pulldown-cmark`, `notify`는 후속이다. 인스턴스와 registry 잠금은 고정 Rust 버전의 표준 File 잠금을 사용한다.
