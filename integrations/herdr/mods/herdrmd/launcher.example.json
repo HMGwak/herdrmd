@@ -1,0 +1,7 @@
+{
+  "name": "Personal Vault",
+  "machine": "vault-host",
+  "binary": "/absolute/path/on/host/herdrmd",
+  "vault": "personal",
+  "file": "folder/note.md"
+}

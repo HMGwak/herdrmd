@@ -29,6 +29,8 @@ Linux에서 XDG 변수가 없으면 사용자 홈의 `.config`, `.local/share`, 
 
 ## Herdr에서 보기
 
+설치한 `+` 메뉴의 **Obsidian 볼트 열기**로 다시 여는 방법은 [메뉴 진입점](open-menu.md)을 따른다. 한 대상 설정을 사용하는 초기 구현이며 컴퓨터·볼트 선택 창은 아직 없다.
+
 설치된 mod에는 main.js, api.js, vault-view.js, mod.json이 필요하다. 기존 mod를 확인·백업하고 전용 폴더만 갱신한다. `herdr-app check <mod folder>`를 실행한다.
 
 Mac 로컬 탭의 props 예시는 다음과 같다. binary는 해당 호스트의 절대 경로로 지정한다.

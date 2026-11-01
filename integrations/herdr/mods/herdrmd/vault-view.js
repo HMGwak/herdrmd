@@ -98,8 +98,8 @@ export class VaultReader {
         .child(Editor.new(this.editor).flex_1());
     return v_flex().id("herdrmd-vault").size_full().p(16).gap(8)
       .bg(t.surface).text_color(t.foreground)
-      .child(div().text_size(18).font_semibold().child("개인 Obsidian"))
-      .child(div().text_size(12).text_color(t.muted).child("Mac 볼트 · 읽기 전용"))
+      .child(div().text_size(18).font_semibold().child(this.options.label || "개인 Obsidian"))
+      .child(div().text_size(12).text_color(t.muted).child("읽기 전용"))
       .child(h_flex().gap(8).child(toggle).child(refresh))
       .child(div().text_size(12).text_color(t.muted).child(this.status))
       .child(content);

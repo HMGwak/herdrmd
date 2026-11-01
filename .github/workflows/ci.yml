@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -30,6 +30,8 @@ jobs:
         run: cargo fmt --check
       - name: Check workspace
         run: cargo check --workspace --locked
+      - name: Test launcher configuration
+        run: node --test tests/scenarios/launcher.test.mjs
       - name: Build workspace
         run: cargo build --workspace --locked
       - name: Test workspace
@@ -45,6 +47,14 @@ jobs:
           Copy-Item target/debug/herdrmd.exe $mod
           Copy-Item integrations/herdr/mods/herdrmd/main.js,integrations/herdr/mods/herdrmd/api.js,integrations/herdr/mods/herdrmd/mod.json $mod
           Copy-Item integrations/herdr/mods/herdrmd/vault-view.js $mod
+          foreach ($name in @('herdrmd-tabs', 'herdrmd-new-menu')) {
+            $destination = Join-Path $bundle "mods/$name"
+            New-Item -ItemType Directory -Force $destination | Out-Null
+            Copy-Item "integrations/herdr/mods/$name/main.js","integrations/herdr/mods/$name/mod.json" $destination
+          }
+          Copy-Item integrations/herdr/mods/herdrmd-new-menu/launcher.js (Join-Path $bundle 'mods/herdrmd-new-menu')
+          Copy-Item integrations/herdr/mods/herdrmd/launcher.example.json $mod
+          Copy-Item docs/open-menu.md (Join-Path $bundle 'open-menu.md')
           Copy-Item docs/windows-bridge.md (Join-Path $bundle 'README.md')
           & (Join-Path $mod 'herdrmd.exe') --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -54,5 +64,21 @@ jobs:
         with:
           name: herdrmd-bridge-windows
           path: ${{ runner.temp }}/herdrmd-bridge-windows/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Build portable NAS reader
+        if: runner.os == 'Linux' && github.event_name == 'push'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked -p herdrmd --target x86_64-unknown-linux-musl
+          target/x86_64-unknown-linux-musl/release/herdrmd --version
+      - name: Upload portable NAS reader
+        if: runner.os == 'Linux' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: herdrmd-reader-linux-x64
+          path: target/x86_64-unknown-linux-musl/release/herdrmd
           retention-days: 7
           if-no-files-found: error
