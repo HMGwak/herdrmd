@@ -1,0 +1,29 @@
+# Cargo build output and release/install packages
+/target/
+/dist/
+/artifacts/
+
+# Machine-local configuration and state; never use real Vault data as fixtures
+/.env
+/.env.*
+!/.env.example
+/.herdrmd/
+/herdrmd-runtime/
+/herdrmd-cache/
+/registry.json
+/service.json
+/drafts/
+/recovery/
+/locks/
+/cache/
+/logs/
+/config.local.*
+*.local.toml
+*.log
+
+# Editor and OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo

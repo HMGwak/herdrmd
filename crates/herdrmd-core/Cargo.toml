@@ -1,0 +1,8 @@
+[package]
+name = "herdrmd-core"
+description = "Shared Markdown and Vault core for herdrmd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true

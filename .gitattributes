@@ -1,0 +1,6 @@
+# Text source and documentation use LF on every platform.
+* text=auto eol=lf
+
+# Preserve exact bytes in synthetic fixtures (BOM, CRLF, mixed EOL, encoding).
+tests/fixtures/** -text !eol
+crates/**/tests/fixtures/** -text !eol
