@@ -109,6 +109,14 @@ test("a unique complete resolver result returns one open action and its fragment
   assert.equal(navigation.current(action, same(source)), false);
 });
 
+test("created is carried only by a complete found result, never by an incomplete candidate", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  const action = await navigation.follow("New", source, async () => ({ ...found("New.md"), created: true }), same(source));
+  assert.equal(action.created, true);
+  await navigation.follow("Partial", source, async () => ({ status: "incomplete", matches: ["Partial.md"], fragment: null, truncated: true, created: true }), same(source));
+  assert.equal(navigation.choose(0, same(source)).created, false);
+});
+
 test("ambiguous results require explicit path selection and cannot choose stale choices", async () => {
   const navigation = new WikiNavigation(), source = from();
   const action = await navigation.follow("Same", source, async () => ({ status: "ambiguous", matches: ["a/Same.md", "b/Same.md"], fragment: "^block", truncated: false }), same(source));
@@ -230,13 +238,13 @@ const readerHarness = () => {
   return { reader, tasks, opened, external, cx, document };
 };
 
-test("reader sends exact from/target arguments on the configured NAS and opens a found document", async () => {
+test("reader follows a link with exact from/target arguments on the configured NAS", async () => {
   const { reader, tasks, opened, cx, document } = readerHarness(), calls = [];
   const raw = document.text;
   integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify(found("notes/Target.md", "Heading")) }; };
   reader.followLink(0, cx);
   await Promise.all(tasks);
-  assert.deepEqual(calls, [["/opt/herdrmd", ["resolve", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
+  assert.deepEqual(calls, [["/opt/herdrmd", ["follow", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
   assert.deepEqual(opened, ["notes/Target.md"]);
   assert.match(reader.notice, /제목·블록/);
   assert.equal(document.text, raw);
@@ -284,4 +292,48 @@ test("fragment feedback is present before the first spawned loading frame and su
   reader.open("Source.md", cx);
   assert.equal(reader.notice, "");
   await Promise.all(tasks);
+});
+
+
+test("a created document replaces stale text and appears in expanded or previously collapsed folder caches", async () => {
+  for (const expanded of [false, true]) {
+    const reader = Object.create(VaultReader.prototype), tasks = [], listCalls = [], readCalls = [], execCalls = [];
+    let created = false;
+    const sourceDocument = { text: "[[folder/New note]]", bytes: 19, encoding: "utf-8", line_endings: "lf", bom: false };
+    const blankDocument = { text: "", bytes: 0, encoding: "utf-8", line_endings: "none", bom: false };
+    const folderEntry = { name: "folder", path: "folder", directory: true };
+    const sourceEntry = { name: "Source.md", path: "folder/Source.md", directory: false };
+    const newEntry = { name: "New note.md", path: "folder/New note.md", directory: false };
+    const model = new ReaderModel(async (operation, path) => {
+      if (operation === "files") {
+        listCalls.push(path);
+        return { entries: path === "" ? [folderEntry] : [sourceEntry, ...(created ? [newEntry] : [])], truncated: false };
+      }
+      readCalls.push(path);
+      return path === sourceEntry.path ? sourceDocument : blankDocument;
+    });
+    await model.list(""); await model.toggleFolder("folder"); await model.open(sourceEntry.path);
+    if (!expanded) await model.toggleFolder("folder");
+    // The same path could have been read before another program removed the file.
+    model.documents.set(newEntry.path, { ...blankDocument, text: "stale deleted text" });
+    Object.assign(reader, { model, options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
+      previewMetadata: new WeakMap(), previewLinks: new WeakMap(), previewSequence: 0, wikiScope: "synthetic-create",
+      closed: false, notice: "", editor: { set_value() {} } });
+    integration.exec = async (...args) => {
+      execCalls.push(args); created = true;
+      return { code: 0, stdout: JSON.stringify({ ...found(newEntry.path), created: true }) };
+    };
+    const cx = { spawn(handler) { tasks.push(handler(cx)); }, notify() {} };
+    reader.followLink(0, cx);
+    let drained = 0;
+    while (drained < tasks.length) { const batch = tasks.slice(drained); drained = tasks.length; await Promise.all(batch); }
+    assert.deepEqual(execCalls, [["/opt/herdrmd", ["follow", "--vault", "test-vault", "--from", sourceEntry.path, "--target", "folder/New note"], { on: "synthetic-nas" }]]);
+    assert.equal(model.selected, newEntry.path);
+    assert.equal(model.document, blankDocument);
+    assert.equal(model.document.text, "");
+    assert.ok(readCalls.includes(newEntry.path));
+    assert.deepEqual(listCalls, ["", "folder", "", "folder"]);
+    assert.ok(model.visibleEntries.some((entry) => entry.path === newEntry.path));
+    assert.match(reader.notice, /빈 문서.*만들었습니다/);
+  }
 });

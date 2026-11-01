@@ -1,4 +1,4 @@
-//! Read-only wiki target lookup. The UI only formats links; paths stay here.
+//! Wiki lookup and create-on-follow. The UI only formats links; paths stay here.
 use crate::{
     Result, platform,
     vault::{self, Vault},
@@ -23,6 +23,7 @@ pub struct LinkResolution {
     pub matches: Vec<String>,
     pub fragment: Option<String>,
     pub truncated: bool,
+    pub created: bool,
 }
 
 fn normalized(text: &str) -> String {
@@ -68,11 +69,65 @@ fn answer(mut matches: Vec<String>, fragment: Option<String>, truncated: bool) -
         matches,
         fragment,
         truncated,
+        created: false,
     }
 }
 
 pub fn resolve(vault: &Vault, from: &str, target: &str) -> Result<LinkResolution> {
     resolve_with_limits(vault, from, target, MAX_ENTRIES, MAX_TIME)
+}
+
+/// A link click may create an empty note, but an incomplete search never implies absence.
+pub fn follow(
+    vault: &Vault,
+    from: &str,
+    target: &str,
+    directories: &platform::UserDirectories,
+) -> Result<LinkResolution> {
+    let result = resolve(vault, from, target)?;
+    if result.status != "not_found" {
+        return Ok(result);
+    }
+    let creation = crate::storage::Creation::begin(vault, directories)?;
+    let result = resolve(vault, from, target)?;
+    if result.status != "not_found" {
+        return Ok(result);
+    }
+    let name = target
+        .split('|')
+        .next()
+        .unwrap_or("")
+        .split('#')
+        .next()
+        .unwrap_or("")
+        .trim();
+    let name = normalized(without_extension(name));
+    if !valid_path(&name)
+        || name.split('/').count() > MAX_DEPTH
+        || name.split('/').any(|part| {
+            part.ends_with(['.', ' '])
+                || part
+                    .chars()
+                    .any(|c| c.is_control() || "<>\"?*|".contains(c))
+                || {
+                    let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
+                    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+                        || stem
+                            .strip_prefix("COM")
+                            .or_else(|| stem.strip_prefix("LPT"))
+                            .is_some_and(|n| {
+                                matches!(n, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+                            })
+                }
+        })
+    {
+        return Err("wiki target is not a portable Markdown creation path".into());
+    }
+    let path = format!("{name}.md");
+    let created = creation.empty_note(vault, &path)?;
+    let mut result = answer(vec![path], result.fragment, false);
+    result.created = created;
+    Ok(result)
 }
 
 fn resolve_with_limits(

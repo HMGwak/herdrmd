@@ -2,7 +2,7 @@
 
 ## 범위와 구현 상태
 
-현재는 읽기 전용 Vault 코어·CLI·화면과 00 연결 probe 단계다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
+현재는 Vault 읽기·위키링크 이동·미존재 링크의 빈 노트 생성과 00 연결 probe 단계다. 기존 본문 편집·저장·교체·추가는 아직 없다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
 
 ## 책임과 배치
 
@@ -35,6 +35,6 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 ```
 
-macOS·Windows CI를 유지한다. CI 성공과 실제 Herdr 화면 검증을 구분해 기록한다. 연결 검증에는 분리 프로세스 통합 테스트가 있으며 Vault·저장 도메인 테스트는 후속 기능에 맞게 추가한다. 줄바꿈 fixture는 `.gitattributes`에서 변환을 제외한다.
+macOS·Windows CI를 유지한다. CI 성공과 실제 Herdr 화면 검증을 구분해 기록한다. 연결·Vault 읽기·위키링크·빈 문서 생성에는 단위/통합 테스트가 있으며 기존 본문 저장·복구 테스트는 후속 기능에 맞게 추가한다. 줄바꿈 fixture는 `.gitattributes`에서 변환을 제외한다.
 
 작업 완료 시 기술 계약은 저장소 문서에 반영한다. Obsidian 기록 작업이 요청된 경우 해당 태스크의 결과·검증·커밋과 프로젝트 허브의 현재 단계·다음 행동을 갱신한다. 추가 AGY CLI 호출은 사용자가 요청한 경우에만 수행한다.

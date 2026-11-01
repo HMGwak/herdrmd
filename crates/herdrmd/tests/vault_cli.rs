@@ -11,6 +11,59 @@ fn run(config: &Path, args: &[&str]) -> std::process::Output {
 }
 
 #[test]
+fn cli_follow_creates_a_missing_note_using_isolated_user_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let vault = root.join("vault");
+    fs::create_dir(&vault).unwrap();
+    fs::write(vault.join("source.md"), "[[folder/new]]").unwrap();
+    let config = root.join("config");
+    let registration = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+        .args(["vault", "add", "demo"])
+        .arg(&vault)
+        .arg("--config-dir")
+        .arg(&config)
+        .output()
+        .unwrap();
+    assert!(registration.status.success());
+    for expected in [true, false] {
+        let output = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+            .args([
+                "follow",
+                "--vault",
+                "demo",
+                "--from",
+                "source.md",
+                "--target",
+                "folder/new#title",
+            ])
+            .arg("--config-dir")
+            .arg(&config)
+            .env("HOME", &root)
+            .env("APPDATA", root.join("roaming"))
+            .env("LOCALAPPDATA", root.join("local"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_STATE_HOME", root.join("state"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(response["created"], expected);
+        assert_eq!(response["matches"][0], "folder/new.md");
+        assert_eq!(response["fragment"], "title");
+    }
+    assert_eq!(fs::read(vault.join("folder/new.md")).unwrap(), b"");
+    assert_eq!(
+        fs::read(vault.join("source.md")).unwrap(),
+        b"[[folder/new]]"
+    );
+}
+
+#[test]
 fn cli_registration_listing_and_read_do_not_need_service() {
     let temp = tempfile::tempdir().unwrap();
     let directory = temp.path().canonicalize().unwrap();

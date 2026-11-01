@@ -86,13 +86,18 @@ export class VaultReader {
     });
   }
 
-  open(path, cx, { notice = "" } = {}) {
+  open(path, cx, { notice = "", created = false } = {}) {
     this.wikiNavigation?.cancel();
     this.explorerOpen = false;
     // Set navigation feedback before spawn can publish the first loading frame.
     this.notice = notice;
-    this.action(cx, () => this.model.open(path));
-    if (parentPath(path)) this.action(cx, () => this.model.reveal(path));
+    // A recreated path may still have an older open-tab snapshot in memory.
+    this.action(cx, () => this.model.open(path, created));
+    if (created) this.action(cx, async () => {
+      await this.model.refreshTree();
+      if (!this.closed && this.model.selected === path) await this.model.reveal(path);
+    });
+    else if (parentPath(path)) this.action(cx, () => this.model.reveal(path));
   }
 
   selectEntry(entry, cx) {
@@ -132,11 +137,11 @@ export class VaultReader {
     return !this.closed && source.path === this.model.selected && source.document === this.model.document && source.generation === this.model.readSequence;
   }
 
-  async resolveLink(from, target) {
+  async followTarget(from, target) {
     const result = await exec(this.options.binary,
-      ["resolve", "--vault", this.vault, "--from", from, "--target", target],
+      ["follow", "--vault", this.vault, "--from", from, "--target", target],
       this.options.machine ? { on: this.options.machine } : {});
-    if (result.code !== 0) throw new Error(result.stderr.trim() || `링크 조회 실패 (${result.code})`);
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `링크 열기 실패 (${result.code})`);
     return JSON.parse(result.stdout);
   }
 
@@ -150,7 +155,7 @@ export class VaultReader {
     const source = { path: this.model.selected, document, generation: this.model.readSequence };
     this.notice = "";
     this.action(cx, async () => {
-      const action = await navigation.follow(link.target, source, (from, target) => this.resolveLink(from, target), (source) => this.currentLinkSource(source));
+      const action = await navigation.follow(link.target, source, (from, target) => this.followTarget(from, target), (source) => this.currentLinkSource(source));
       if (action) this.openResolvedLink(action, cx);
     });
   }
@@ -163,7 +168,9 @@ export class VaultReader {
   openResolvedLink(action, cx) {
     if (!this.wikiNavigation?.current(action, (source) => this.currentLinkSource(source))) return;
     this.mode = "preview";
-    this.open(action.path, cx, { notice: action.fragment ? "제목·블록 위치 이동은 준비 중입니다. 문서만 열었습니다." : "" });
+    const notice = [action.fragment ? "제목·블록 위치 이동은 준비 중입니다." : "",
+      action.created ? "빈 문서를 만들었습니다." : action.fragment ? "문서만 열었습니다." : ""].filter(Boolean).join(" ");
+    this.open(action.path, cx, { notice, created: action.created === true });
   }
 
   previewLink(url, document, path, cx) {
@@ -300,7 +307,7 @@ export class VaultReader {
         .when(showExplorer, (el) => el.child(this.explorer(t)))
         .when(showDocument, (el) => el.child(this.documentPane(t))))
       .child(h_flex().h(28).flex_none().px(12).gap(10).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim)
-        .child(div().flex_none().child("읽기 전용"))
+        .child(div().flex_none().child("본문 읽기 전용"))
         .child(div().flex_1().min_w(0).truncate().tooltip(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))
           .child(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))));
   }

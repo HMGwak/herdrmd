@@ -1,6 +1,6 @@
 # CLI 계약
 
-읽기 전용 `vault add <name> <absolute path>`, `vault list`, `files/read --vault <name> --path <relative path>`, `paths`도 구현했다. 현재는 JSON이 기본 출력이고 명시적인 등록명과 경로를 요구한다. [Vault 연결](vault-connection.md)에 정확한 사용법과 제한을 기록한다. 아래 일반 CLI 목표의 자동 Vault 선택·검색·쓰기·안정적인 세부 오류 코드는 아직 제공하지 않는다.
+읽기 전용 `vault add <name> <absolute path>`, `vault list`, `files/read --vault <name> --path <relative path>`, `paths`도 구현했다. 현재는 JSON이 기본 출력이고 명시적인 등록명과 경로를 요구한다. [Vault 연결](vault-connection.md)에 정확한 사용법과 제한을 기록한다. `follow`는 없는 위키 대상의 빈 노트 생성도 수행한다. 아래 일반 CLI 목표의 자동 Vault 선택·검색·본문 쓰기·안정적인 세부 오류 코드는 아직 제공하지 않는다.
 
 00 연결 검증 명령은 `serve`, `service ensure/wait/status/stop`, `bridge report`이며 명시적인 `--state-dir <절대 임시 경로>`를 요구한다. `bridge location`은 상태를 만들지 않고 이 클라이언트의 기본 OS 임시 경로를 JSON으로 반환한다. 인수 없는 실행은 도움말을 출력한다. [검증 절차](bridge-verification.md)를 참고한다. 나머지 아래 명령·JSON·종료 코드 계약은 구현 목표다.
 
@@ -34,3 +34,7 @@ herdrmd obsidian -- <공식 CLI 인수>
 ## 읽기 전용 위키 대상 조회
 
 현재 구현한 명령은 `herdrmd resolve --vault <등록명> --from <현재 상대경로.md> --target <위키 대상>`이다. JSON status는 found/ambiguous/not_found/incomplete이며 matches는 실제 Vault 상대경로 배열, fragment는 제목/블록 문자열 또는 null, truncated는 완전 조회 여부다. `--config-dir`은 다른 Vault 명령과 같이 마지막에 지정한다. 조회 경계·이름 비교·후보 선택은 [Vault 연결](vault-connection.md)의 위키링크 계약을 따른다. 생성·수정이나 프론트매터 aliases 조회는 수행하지 않는다.
+
+## 위키링크 열기와 빈 노트 생성
+
+`herdrmd follow --vault <등록명> --from <현재 상대경로.md> --target <위키 대상>`은 UI 링크 클릭에 사용한다. 기존 대상을 조회하고 완전한 not_found일 때만 빈 UTF-8 `.md`를 생성해 found로 반환한다. resolve와 같은 응답에 created boolean을 포함하며 실제 생성했을 때만 true다. resolve는 계속 조회만 수행하고 created는 false다. `--config-dir`은 registry 위치만 바꾸며 잠금/기록은 실행 호스트의 기본 OS 사용자 state/data 경로를 사용한다. 테스트에서는 해당 프로세스의 사용자 경로 환경 변수를 임시 위치로 분리한다.
