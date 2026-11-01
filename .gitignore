@@ -33,3 +33,8 @@ Thumbs.db
 Desktop.ini
 *.swp
 *.swo
+
+# Development-only diagnostic mods generate the same local API snapshots.
+/integrations/herdr/diagnostics/*/gpui-kit.d.ts
+/integrations/herdr/diagnostics/*/herdr.d.ts
+/integrations/herdr/diagnostics/*/jsconfig.json

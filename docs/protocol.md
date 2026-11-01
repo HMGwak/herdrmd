@@ -1,10 +1,10 @@
 # Herdr와 로컬 서비스 계약
 
-개인 Vault의 초기 읽기 화면은 [Vault 연결](vault-connection.md)처럼 명시한 core 머신에서 짧은 CLI JSON 호출로 읽는다. 현재 HTTP에는 Vault 읽기 API를 추가하지 않았다. 아래 HTTP의 Vault·초안 계약은 후속 목표다.
+개인 Vault의 초기 읽기 화면은 [Vault 연결](vault-connection.md)처럼 명시한 core 머신에서 짧은 CLI JSON 호출로 읽는다. 제품 실행 파일에는 현재 HTTP 서비스가 없다. 아래 HTTP의 Vault·초안 계약은 후속 목표다.
 
-00 연결 검증용 HTTP·인증·JS mod를 구현했다. 현재 실제 경로는 `GET /v1/health`, `POST /v1/echo`, `POST /v1/events`, `GET /v1/probe`, `POST /v1/stop`이다. 모두 Bearer 토큰을 요구하고 정확한 loopback Host와 Origin 부재를 검사한다. JSON 본문은 64 KiB, 인증 이후 처리 시간은 2초로 제한한다. Vault·문서·초안 API는 아직 없으며 아래 제품 계약은 향후 구현 목표다. [연결 검증](bridge-verification.md)에서 실제 결과와 미검증 범위를 구분한다.
+00 연결 검증용 HTTP·인증·JS mod는 별도 herdrmd-diagnostics/herdrmd-probe 개발 도구로 옮겼다. 아래 현재 HTTP 경로는 진단 도구에만 속한다. 현재 실제 경로는 `GET /v1/health`, `POST /v1/echo`, `POST /v1/events`, `GET /v1/probe`, `POST /v1/stop`이다. 모두 Bearer 토큰을 요구하고 정확한 loopback Host와 Origin 부재를 검사한다. JSON 본문은 64 KiB, 인증 이후 처리 시간은 2초로 제한한다. Vault·문서·초안 API는 아직 없으며 아래 제품 계약은 향후 구현 목표다. [연결 검증](bridge-verification.md)에서 실제 결과와 미검증 범위를 구분한다.
 
-`herdrmd serve`는 `127.0.0.1`의 임의 포트에서 실행한다. 별도 서비스 crate를 만들지 않는다. `service ensure`는 기존 인스턴스를 재사용하거나 분리 실행하고 최대 5초 안에 준비 여부를 판정한다. 단독 실행의 수명은 부모 PID나 stdio EOF에 묶지 않으며 10분간 요청이 없으면 종료한다. 다만 Windows Herdr의 짧은 `exec`는 kill-on-close Job Object를 사용해 분리한 자식도 정리한다. Windows mod는 로컬 core의 `hc run --bg --no-parent --no-notify --rm -- <binary> serve ...`로 서비스를 직접 시작하고 `service wait`로 준비를 확인한다. 기존 서비스가 정상이면 재사용한다. Job 정책을 변경하거나 강제 breakaway를 시도하지 않는다.
+진단 도구의 `herdrmd-diagnostics serve`는 `127.0.0.1`의 임의 포트에서 실행한다. 이 개발 도구는 제품 서비스 crate가 아니며 제품 패키지에 포함하지 않는다. `service ensure`는 기존 인스턴스를 재사용하거나 분리 실행하고 최대 5초 안에 준비 여부를 판정한다. 단독 실행의 수명은 부모 PID나 stdio EOF에 묶지 않으며 10분간 요청이 없으면 종료한다. 다만 Windows Herdr의 짧은 `exec`는 kill-on-close Job Object를 사용해 분리한 자식도 정리한다. Windows mod는 로컬 core의 `hc run --bg --no-parent --no-notify --rm -- <binary> serve ...`로 서비스를 직접 시작하고 `service wait`로 준비를 확인한다. 기존 서비스가 정상이면 재사용한다. Job 정책을 변경하거나 강제 breakaway를 시도하지 않는다.
 
 제품의 연결 파일 목표는 사용자 전용 로컬 상태 디렉터리의 `herdrmd-runtime/service.json`이다. 00에서는 사용자 설정을 만들지 않고 `--state-dir`로 명시한 임시 디렉터리에 `service.json`과 `instance.lock`을 둔다. 포트·실행별 토큰·프로토콜 버전·PID를 저장하며 토큰은 인수·일반 stdout·로그에 출력하지 않는다. Rust 표준 File 잠금으로 단일 인스턴스를 유지하고 stale 연결 파일을 교체한다. Unix 디렉터리/파일은 0700/0600을 적용한다. Windows는 임시 경로의 상속 ACL을 사용하며 명시적인 사용자 전용 ACL·OS 기본 경로 정책은 후속 태스크에서 구현·검증한다.
 

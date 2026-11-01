@@ -31,7 +31,7 @@ Linux에서 XDG 변수가 없으면 사용자 홈의 `.config`, `.local/share`, 
 
 설치한 `+` 메뉴의 **Obsidian 볼트 열기**로 다시 여는 방법은 [메뉴 진입점](open-menu.md)을 따른다. 등록한 대상이 여러 개면 개인·회사 등의 이름으로 선택한다. NAS 직접 연결도 같은 설정을 사용한다. 볼트 설정 화면은 현재 컴퓨터·폴더 경로를 확인하는 진입점이며, 폴더 변경·등록 UI와 자동 탐지는 후속이다.
 
-설치된 mod에는 main.js, api.js, vault-view.js와 그 보조 JS 모듈, obsidian.svg, mod.json이 필요하다. 기존 mod를 확인·백업하고 전용 폴더만 갱신한다. `herdr-app check <mod folder>`를 실행한다.
+설치된 mod에는 main.js, vault-view.js와 그 보조 JS 모듈, obsidian.svg, mod.json이 필요하다. 기존 mod를 확인·백업하고 전용 폴더만 갱신한다. `herdr-app check <mod folder>`를 실행한다.
 
 Mac 로컬 탭의 props 예시는 다음과 같다. binary는 해당 호스트의 절대 경로로 지정한다.
 
@@ -57,7 +57,7 @@ Markdown 파일을 고르면 화면 안의 문서 탭에 열고 **읽기 / 원�
 
 상단 **설정**은 현재 연결의 컴퓨터와 실제 Markdown 폴더 경로를 같은 호스트의 registry에서 조회한다. 경로 확인 실패는 오류로 표시하며 로컬 폴더를 원격 경로로 추측하지 않는다. **폴더 경로 선택 · 준비 중**은 이후 직접 경로 선택을 연결할 비활성 진입점이다. 현재는 경로를 선택·등록·변경하거나 launcher.json을 쓰지 않는다. 개인/회사 선택은 기존 `+` 메뉴를 사용한다. 설정 화면에서 문서로 돌아오면 열어 둔 문서 상태를 유지한다.
 
-`herdrmd.refresh`, `settings`, `settings-close`, `browse`, `source`, `preview`는 같은 UI 메서드를 호출한다. `open-entry-N`(1부터 시작)과 `read-first-note`는 현재 보이는 트리의 항목/첫 Markdown을 여는 앱 명령 검증에 쓴다. `collapse-all`은 폴더를 모두 접고 `properties`는 현재 문서의 속성 영역을 펼치거나 접는다. 실제 마우스·키 입력 검증과 구분한다.
+제품 명령 refresh, settings/settings-close, browse, source/preview, collapse-all, properties, dismiss-link는 실제 UI 메서드를 호출한다. 과거 QA용 open-entry-N/read-first-note/follow-link-N/choose-link-N 선택자 명령은 제품에서 제거했다. 클릭 콜백과 모델은 합성 테스트에서 검증하며 제품에 QA dispatch를 두지 않는다. 00 probe는 별도 herdrmd-probe mod와 herdrmd-diagnostics 실행 파일로만 제공한다.
 
 ## 경계와 검증
 

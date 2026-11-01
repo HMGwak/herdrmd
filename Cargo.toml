@@ -1,5 +1,6 @@
 [workspace]
-members = ["crates/herdrmd-core", "crates/herdrmd"]
+members = ["crates/herdrmd-core", "crates/herdrmd", "tools/herdrmd-diagnostics"]
+default-members = ["crates/herdrmd-core", "crates/herdrmd"]
 resolver = "3"
 
 [workspace.package]

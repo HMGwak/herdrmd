@@ -5,11 +5,11 @@
 ## 명령과 상태
 
 ```sh
-cargo build --workspace --locked
-target/debug/herdrmd service ensure --state-dir /absolute/private/scratch/herdrmd-00
-target/debug/herdrmd service status --state-dir /absolute/private/scratch/herdrmd-00
-target/debug/herdrmd bridge report --state-dir /absolute/private/scratch/herdrmd-00
-target/debug/herdrmd service stop --state-dir /absolute/private/scratch/herdrmd-00
+cargo build -p herdrmd-diagnostics --locked
+target/debug/herdrmd-diagnostics service ensure --state-dir /absolute/private/scratch/herdrmd-00
+target/debug/herdrmd-diagnostics service status --state-dir /absolute/private/scratch/herdrmd-00
+target/debug/herdrmd-diagnostics bridge report --state-dir /absolute/private/scratch/herdrmd-00
+target/debug/herdrmd-diagnostics service stop --state-dir /absolute/private/scratch/herdrmd-00
 ```
 
 `ensure`는 연결 파일 경로·프로토콜·PID·재사용 여부만 JSON으로 출력한다. 토큰은 출력하지 않는다. `ensure`는 현재 실행 파일의 `serve`를 다시 실행하고 stdio를 null로 분리한다. Unix는 새 프로세스 그룹, Windows는 detached process 플래그를 사용한다. 인스턴스 File 잠금은 서비스가 유지한다. 10분간 인증된 요청이 없으면 종료한다.
@@ -18,18 +18,18 @@ target/debug/herdrmd service stop --state-dir /absolute/private/scratch/herdrmd-
 
 ## Herdr mod
 
-소스 `integrations/herdr/mods/herdrmd/`의 모든 `*.js`, `mod.json`, `obsidian.svg`를 Herdr 설정 폴더의 `mods/herdrmd/`로 복사한다. 현재 main.js가 reader도 정적으로 import하므로 00 probe만 실행하더라도 보조 JS 파일이 필요하다. 기존 동일 이름 mod가 있으면 내용을 확인·백업한 뒤 전용 파일만 갱신하고 사용자 `launcher.json`은 보존한다. `place: none`이므로 기존 레이아웃·키 설정은 바꾸지 않는다.
+소스 `integrations/herdr/diagnostics/herdrmd-probe/`의 main.js·api.js·mod.json을 appHome의 mods/herdrmd-probe에 설치한다. 제품 mods/herdrmd와 섞지 않는다. 진단 실행 파일은 같은 호스트에 별도로 설치하고 binary props에 지정한다. Windows 기본 경로는 mods/herdrmd-probe/herdrmd-diagnostics.exe다. 기존 변경을 검사·백업하며 제품 launcher.json·레이아웃·키는 유지한다.
 
 ```sh
-herdr-app check /absolute/path/to/integrations/herdr/mods/herdrmd
-herdr-app do tab.new '{"name":"herdrmd · 00 bridge","space":"<existing space ID>","mod":"herdrmd","props":{"binary":"/absolute/path/to/target/debug/herdrmd","state_dir":"/absolute/private/scratch/herdrmd-00"}}'
+herdr-app check /absolute/path/to/integrations/herdr/diagnostics/herdrmd-probe
+herdr-app do tab.new '{"name":"herdrmd · 00 bridge","space":"<existing space ID>","mod":"herdrmd-probe","props":{"binary":"/absolute/path/to/target/debug/herdrmd-diagnostics","state_dir":"/absolute/private/scratch/herdrmd-00"}}'
 ```
 
 macOS mod는 Herdr의 `exec`로 ensure를 실행한다. Windows mod는 로컬 core의 `hc run --bg --no-parent --no-notify --rm`으로 `serve`를 직접 시작하고 `service wait`로 최대 5초 준비를 확인한다. 정상 인스턴스가 있으면 재사용한다. 이후 연결 파일을 읽고 인증 GET, 무인증 401, 한글 POST echo를 검증한다. 토큰은 화면·명령 인수·일반 로그에 표시하지 않는다. 성공 화면에 PID와 UTF-8 바이트 수를 표시한다.
 
 mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 00 probe의 exec에는 원격 대상을 지정하지 않으며 HTTP는 그 클라이언트의 loopback을 사용한다. 제품 reader의 원격 호출은 이 실험과 별개다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
 
-Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성공한 수동 CI(workflow_dispatch)는 실행 파일·JS·설치 안내가 포함된 `herdrmd-bridge-windows` artifact를 제공한다. push/PR로 CI를 자동 실행하지 않는다. 다른 OS의 절대 경로가 탭 props에 공유되면 mod는 현재 클라이언트의 mod 폴더 안 실행 파일을 선택하고, `bridge location`으로 OS 임시 상태 경로를 조회한다. 사용자 설정·Vault에 토큰을 복사하지 않는다.
+Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. include_diagnostics를 켜고 성공한 수동 CI(workflow_dispatch)는 실행 파일·JS·설치 안내가 포함된 `herdrmd-diagnostics-windows` artifact를 제공한다. push/PR로 CI를 자동 실행하지 않는다. 다른 OS의 절대 경로가 탭 props에 공유되면 mod는 현재 클라이언트의 mod 폴더 안 실행 파일을 선택하고, `bridge location`으로 OS 임시 상태 경로를 조회한다. 사용자 설정·Vault에 토큰을 복사하지 않는다.
 
 실제 입력·링크·탭 검증 순서는 다음과 같다.
 
@@ -39,11 +39,11 @@ Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성�
 4. 만든 검증 탭만 닫고 report에서 그 instance의 `closed`와 서비스 PID 생존을 확인한다.
 5. 만든 서비스만 `service stop`으로 종료한다. 사용자 소유 터미널·앱·다른 서비스는 종료하지 않는다.
 
-`herdr-app do herdrmd.probe`는 프로그램으로 `EditorState.set_value`를 호출하는 별도 탐침이다. `programmatic_set`과 native `editor_change` 발생 여부를 report로 확인할 수 있지만 실제 키 입력·한글 IME·링크 클릭의 증거로 사용하지 않는다. `<mod>.<command>`는 화면에 표시된 복사본에만 전달된다.
+`herdr-app do herdrmd-probe.probe`는 프로그램으로 `EditorState.set_value`를 호출하는 별도 탐침이다. `programmatic_set`과 native `editor_change` 발생 여부를 report로 확인할 수 있지만 실제 키 입력·한글 IME·링크 클릭의 증거로 사용하지 않는다. `<mod>.<command>`는 화면에 표시된 복사본에만 전달된다.
 
 ## 자동 검증과 한계
 
-`cargo test --workspace --locked`는 별도 프로세스로 ensure를 실행해 반환 후 생존, 재사용, 인증 거부, Origin/Host 거부, 한글·emoji·CRLF/LF·끝 개행 보존, 본문 상한, 동시 ensure, stale 연결 복구, 두 번째 serve 거부와 종료를 검사한다. 외부 호스트가 지연 시작한 `serve`를 `wait`가 직접 프로세스를 만들지 않고 발견하는 검사도 포함한다. Unix에서는 의도적으로 상속 가능한 FD를 전달해 서버가 불필요한 출력 핸들을 유지하지 않는 회귀 검사도 수행한다. 테스트는 합성 데이터와 OS 임시 폴더만 사용한다.
+`cargo test -p herdrmd-diagnostics --locked`는 별도 프로세스로 ensure를 실행해 반환 후 생존, 재사용, 인증 거부, Origin/Host 거부, 한글·emoji·CRLF/LF·끝 개행 보존, 본문 상한, 동시 ensure, stale 연결 복구, 두 번째 serve 거부와 종료를 검사한다. 외부 호스트가 지연 시작한 `serve`를 `wait`가 직접 프로세스를 만들지 않고 발견하는 검사도 포함한다. Unix에서는 의도적으로 상속 가능한 FD를 전달해 서버가 불필요한 출력 핸들을 유지하지 않는 회귀 검사도 수행한다. 테스트는 합성 데이터와 OS 임시 폴더만 사용한다.
 
 macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아 다른 launcher의 EOF를 막는 현상을 관찰했다. 따라서 단독 `serve` 프로세스가 상태 파일·잠금·런타임을 열기 전에 Unix의 상속 FD 3 이상을 닫는다. `pre_exec`에서 Rust 내부 exec 오류 전달 파이프를 닫는 방법은 사용하지 않는다. 이 진입점은 외부 FD 인수를 지원하지 않는다.
 

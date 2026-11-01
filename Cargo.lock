@@ -261,16 +261,9 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 name = "herdrmd"
 version = "0.1.0"
 dependencies = [
- "axum",
- "getrandom",
  "herdrmd-core",
- "libc",
- "serde",
  "serde_json",
  "tempfile",
- "tokio",
- "ureq",
- "windows-sys",
 ]
 
 [[package]]
@@ -283,6 +276,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unicode-normalization",
+]
+
+[[package]]
+name = "herdrmd-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "getrandom",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "ureq",
+ "windows-sys",
 ]
 
 [[package]]

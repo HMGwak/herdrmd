@@ -1,6 +1,4 @@
 mod cli;
-mod platform;
-mod service;
 
 fn main() -> std::process::ExitCode {
     match cli::run() {

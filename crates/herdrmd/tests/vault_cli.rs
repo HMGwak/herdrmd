@@ -1,6 +1,20 @@
 use serde_json::Value;
 use std::{fs, path::Path, process::Command};
 
+#[test]
+fn product_entry_has_no_diagnostic_commands() {
+    let binary = env!("CARGO_BIN_EXE_herdrmd");
+    let help = Command::new(binary).arg("--help").output().unwrap();
+    assert!(help.status.success());
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(!help.contains("probe") && !help.contains("service") && !help.contains("serve"));
+    for command in ["serve", "service", "bridge"] {
+        let output = Command::new(binary).arg(command).output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("unknown command"));
+    }
+}
+
 fn run(config: &Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_herdrmd"))
         .args(args)

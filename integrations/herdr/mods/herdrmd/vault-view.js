@@ -38,19 +38,10 @@ export class VaultReader {
         else if (command === "settings") { this.settingsOpen = true; cx.notify(); }
         else if (command === "settings-close") { this.settingsOpen = false; cx.notify(); }
         else if (command === "collapse-all") { this.model.collapseAll(); cx.notify(); }
-        else if (/^follow-link-\d+$/.test(command)) this.followLink(Number(command.slice(12)) - 1, cx);
-        else if (/^choose-link-\d+$/.test(command)) this.chooseLink(Number(command.slice(12)) - 1, cx);
         else if (command === "dismiss-link") { this.wikiNavigation?.cancel(); cx.notify(); }
         else if (command === "properties") this.toggleProperties(cx);
         else if (command === "browse") { this.explorerOpen = true; cx.notify(); }
         else if (command === "source" || command === "preview") { this.mode = command; this.explorerOpen = false; cx.notify(); }
-        else if (command === "read-first-note") {
-          const entry = this.model.visibleEntries.find((entry) => !entry.directory);
-          if (entry) this.open(entry.path, cx);
-        } else if (/^open-entry-\d+$/.test(command)) {
-          const entry = this.model.visibleEntries[Number(command.slice(11)) - 1];
-          if (entry) this.selectEntry(entry, cx);
-        }
       }
     });
   }

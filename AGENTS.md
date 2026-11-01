@@ -2,12 +2,13 @@
 
 ## 범위와 구현 상태
 
-현재는 Vault 읽기·위키링크 이동·미존재 링크의 빈 노트 생성과 00 연결 probe 단계다. 기존 본문 편집·저장·교체·추가는 아직 없다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
+현재 제품은 Vault 읽기·위키링크 이동·미존재 링크의 빈 노트 생성을 제공한다. 00 probe는 tools/herdrmd-diagnostics와 integrations/herdr/diagnostics/herdrmd-probe의 개발 전용 도구로 분리했다. 기존 본문 편집·저장·교체·추가는 아직 없다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
 
 ## 책임과 배치
 
 - `crates/herdrmd-core`: Vault·경로·원문·검색·링크·저장·복구·초안. CLI, HTTP, Herdr에 의존하지 않는다.
-- `crates/herdrmd`: 코어를 사용하는 CLI, `serve` 모드, 공식 Obsidian CLI 연결과 플랫폼별 실행·설치. 별도 서비스 crate를 만들지 않는다.
+- `crates/herdrmd`: 제품 CLI. 향후 제품 서비스도 이 실행 파일에서 제공하며 별도 제품 서비스 crate를 만들지 않는다. 현재 serve/service/bridge 진단 명령은 없다.
+- `tools/herdrmd-diagnostics`: 독립 개발 진단 실행 파일·프로세스 테스트. default-members, 제품 의존성·배포에서 제외한다.
 - `integrations/herdr`: JS mod·서비스 클라이언트·화면과 향후 병합용 키 설정. 파일 처리 규칙은 Rust 코어에 둔다.
 - `agent-skills`: 향후 배포 패키지. 개인 skill 원본은 기존 APM 저장소에서 관리하고 내보낸다. 양쪽을 별도로 편집하지 않는다.
 - `tests/fixtures`, `tests/scenarios`: 향후 합성 자료와 공통 인수 시나리오. 단위 테스트는 해당 Rust 모듈, crate 통합 테스트는 각 `tests/`에 둔다.

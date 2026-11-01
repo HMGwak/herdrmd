@@ -1,6 +1,6 @@
 # 구성과 물리적 배치
 
-현재 구현은 두 crate, 00 연결 probe, 읽기 전용 Vault 등록·목록·원문 코어/CLI와 Herdr reader다. 위키링크 해석과 미존재 대상의 빈 노트 생성도 구현했다. 기존 본문 저장·검색·초안은 미구현이다. 아래 트리는 이후 기능을 배치할 기준이며, 아직 쓰지 않는 하위 폴더는 생성하지 않는다.
+제품은 두 crate의 Vault 등록·목록·원문 코어/CLI와 Herdr reader다. 00 probe는 별도 개발 도구 tools/herdrmd-diagnostics와 diagnostics/herdrmd-probe로 옮겨 기본 빌드·제품 의존성과 배포에서 제외한다. 위키링크 해석과 미존재 대상의 빈 노트 생성도 구현했다. 기존 본문 저장·검색·초안은 미구현이다. 아래 트리는 이후 기능을 배치할 기준이며, 아직 쓰지 않는 하위 폴더는 생성하지 않는다.
 
 ```text
 herdrmd/
@@ -28,7 +28,7 @@ herdrmd/
 │       ├── src/
 │       │   ├── main.rs
 │       │   ├── cli/          # 인수·출력·종료 코드
-│       │   ├── service/      # HTTP·인증·수명
+│       │   ├── service/      # 향후 제품 HTTP·인증·수명 (미구현)
 │       │   ├── integrations/ # Herdr·공식 Obsidian CLI
 │       │   └── platform/     # 분리 실행·설치
 │       └── tests/
@@ -37,7 +37,7 @@ herdrmd/
 │       ├── mods/herdrmd/
 │       │   ├── mod.json
 │       │   ├── main.js
-│       │   ├── api.js
+│       │   ├── reader-model.js
 │       │   └── views/
 │       └── keys.json         # 기존 키 설정에 병합할 정의
 ├── agent-skills/
@@ -54,7 +54,7 @@ herdrmd/
 └── .github/workflows/ci.yml
 ```
 
-코어는 CLI·HTTP·Herdr를 의존하지 않는다. 일반 CLI는 Herdr·Obsidian·서비스가 꺼져 있어도 코어를 직접 호출한다. 현재 reader는 짧은 CLI JSON 호출로 같은 호스트의 코어를 사용한다. HTTP `serve`는 00 probe이며 제품 서비스 API 연결은 후속이다. UI의 렌더링·편집 입력·포커스·단축키만 JavaScript에서 담당한다.
+코어는 CLI·HTTP·Herdr를 의존하지 않는다. 일반 CLI는 Herdr·Obsidian·서비스가 꺼져 있어도 코어를 직접 호출한다. 현재 reader는 짧은 CLI JSON 호출로 같은 호스트의 코어를 사용한다. 제품에는 HTTP serve가 없다. 00 HTTP serve는 독립 진단 실행 파일에서만 제공하며 제품 서비스 API는 후속이다. UI의 렌더링·편집 입력·포커스·단축키만 JavaScript에서 담당한다.
 
 | 종류 | 물리적 위치 | 관리 방식 |
 | --- | --- | --- |
@@ -85,3 +85,5 @@ OS 경로 선택은 코어의 한 모듈에서 관리한다. 잠금·토큰은 W
 저장은 Vault별 OS 잠금 → 재조회·revision 비교 → 복구 기록 → 같은 디렉터리의 임시 파일 → 재검사 → 교체 순서로 구현한다. 생성은 기존 파일을 덮어쓰지 않는다. Obsidian 등 외부 작성자는 잠금을 따르지 않으므로 검사와 교체 사이의 경쟁을 완전히 막는다고 보장하지 않는다. 관찰한 원본과 작성본을 보존하고 실패 시 원본 직접 잘라 쓰기로 전환하지 않는다. 초안·복구 자료는 자동 만료시키지 않고 명시적으로 정리한다.
 
 현재 생성 경로는 Vault 잠금 → 링크 재조회 → expected revision 없음(null)과 빈 작성본 revision을 가진 prepared 기록 → 같은 폴더 임시 파일 → 경계 재검사 → no-clobber 공개 → completed 기록이다. 기존 파일 교체·추가·일반 복구 관리 명령은 아직 없다. 자세한 제한은 [Vault 연결](vault-connection.md)을 따른다.
+
+진단 분리: workspace default-members는 제품 두 crate만 포함한다. 명시적인 cargo build/test --workspace는 개발 진단 도구도 검증한다. 제품 CLI는 진단 crate를 의존하지 않고 제품 mod는 진단 JS를 import하지 않는다. 제품 패키지 herdrmd-windows/herdrmd-reader-linux-x64에는 진단 파일을 넣지 않으며, include_diagnostics를 켠 수동 CI만 별도 herdrmd-diagnostics-windows artifact를 만든다.

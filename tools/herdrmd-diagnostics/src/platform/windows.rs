@@ -1,4 +1,4 @@
-use crate::service::Result;
+use crate::Result;
 use std::{
     ffi::OsStr,
     io,

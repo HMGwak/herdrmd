@@ -1,22 +1,22 @@
 # Windows에서 00 검증 화면 열기
 
-이 패키지는 연결 실험용이며 Vault·문서 편집 기능은 제공하지 않는다. Windows x64용 실행 파일과 Herdr mod가 들어 있다. CI에서 포맷·빌드·프로세스 테스트를 통과한 수동 실행의 artifact로 제공한다. 당분간 push마다 CI를 자동 실행하지 않는다.
+이 패키지는 별도 개발 진단 도구다. 제품 패키지에는 포함되지 않으며 Vault·문서 편집 기능은 제공하지 않는다. Windows x64용 실행 파일과 Herdr mod가 들어 있다. CI에서 포맷·빌드·프로세스 테스트를 통과한 수동 실행에서 include_diagnostics를 켠 경우 별도 artifact로 제공한다. 당분간 push마다 CI를 자동 실행하지 않는다.
 
 ## 설치
 
-GitHub Actions의 성공한 CI 실행에서 `herdrmd-bridge-windows` artifact를 내려받아 압축을 푼다. 다음 명령은 **Windows 로컬 PowerShell**에서, 압축을 푼 폴더를 현재 폴더로 두고 실행한다. Mac에 SSH로 연결된 터미널에서 실행하지 않는다.
+GitHub Actions의 성공한 CI 실행에서 `herdrmd-diagnostics-windows` artifact를 내려받아 압축을 푼다. 다음 명령은 **Windows 로컬 PowerShell**에서, 압축을 푼 폴더를 현재 폴더로 두고 실행한다. Mac에 SSH로 연결된 터미널에서 실행하지 않는다.
 
 ```powershell
-$mod = Join-Path $env:USERPROFILE '.config\herdr-app\mods\herdrmd'
+$mod = Join-Path $env:USERPROFILE '.config\herdr-app\mods\herdrmd-probe'
 New-Item -ItemType Directory -Force $mod | Out-Null
-Copy-Item .\mods\herdrmd\* $mod -Recurse -Force
-& (Join-Path $mod 'herdrmd.exe') --version
+Copy-Item .\mods\herdrmd-probe\* $mod -Recurse -Force
+& (Join-Path $mod 'herdrmd-diagnostics.exe') --version
 herdr-app check $mod
 ```
 
-`HERDR_APP_HOME`을 별도로 설정했다면 그 경로 아래 `mods\herdrmd`에 복사한다. 기존 `herdrmd`가 자신이 수정한 다른 mod라면 먼저 별도 위치에 보관한다. 이 복사는 전용 `herdrmd` 폴더의 파일만 갱신하며 레이아웃·단축키·다른 mod는 수정하지 않는다.
+`HERDR_APP_HOME`을 별도로 설정했다면 그 경로 아래 `mods\herdrmd-probe`에 복사한다. 기존 `herdrmd-probe`가 자신이 수정한 다른 mod라면 먼저 별도 위치에 보관한다. 이 복사는 전용 `herdrmd-probe` 폴더의 파일만 갱신하며 레이아웃·단축키·다른 mod는 수정하지 않는다.
 
-정상적으로 파일이 복사되면 Herdr가 다시 로드한다. 기존 `herdrmd 00 bridge` 탭으로 돌아간다. 탭이 Mac 경로의 props를 공유하더라도 Windows에서는 로컬 mod 폴더의 `herdrmd.exe`와 OS 임시 상태 경로를 사용한다. 네트워크로 Mac 서비스에 접근하거나 토큰을 복사하지 않는다.
+정상적으로 파일이 복사되면 Herdr가 다시 로드한다. `herdrmd-probe`를 사용하는 새 진단 탭을 연다. 기존 제품 herdrmd 탭은 진단 화면으로 전환되지 않는다. 탭이 Mac 경로의 props를 공유하더라도 Windows에서는 로컬 mod 폴더의 `herdrmd-diagnostics.exe`와 OS 임시 상태 경로를 사용한다. 네트워크로 Mac 서비스에 접근하거나 토큰을 복사하지 않는다.
 
 ## Space 선택
 
@@ -25,10 +25,10 @@ herdr-app check $mod
 향후 Windows 로컬 Vault로 작업할 때는 Windows 로컬 컴퓨터를 대상으로 별도 `herdrmd-windows` Space를 두는 것이 관리하기 쉽다. Mac/SSH 터미널과 로컬 PowerShell을 구분한다. 새 검증 탭은 Windows 로컬 CLI에서 다음처럼 만들 수 있다.
 
 ```powershell
-herdr-app do tab.new --name 'herdrmd Windows 00 bridge' --mod herdrmd
+herdr-app do tab.new --name 'herdrmd Windows 00 bridge' --mod herdrmd-probe
 ```
 
-현재 선택한 Space에 탭을 추가하며, 실행 파일과 상태 경로는 이 Windows 클라이언트에서 선택한다. 제품 Vault 탐색은 아직 없다.
+현재 선택한 Space에 탭을 추가하며, 실행 파일과 상태 경로는 이 Windows 클라이언트에서 선택한다. 이 진단 모드는 Vault를 탐색하지 않는다. 제품은 별도 herdrmd mod를 사용한다.
 
 ## 서비스 실행 방식
 
@@ -41,7 +41,7 @@ Windows Herdr의 `exec`는 명령 종료 시 자식을 정리하는 Job Object�
 검증 report와 종료는 같은 Windows PowerShell에서 실행한다.
 
 ```powershell
-$binary = Join-Path $mod 'herdrmd.exe'
+$binary = Join-Path $mod 'herdrmd-diagnostics.exe'
 $state = (& $binary bridge location | ConvertFrom-Json).state_dir
 & $binary bridge report --state-dir $state
 & $binary service stop --state-dir $state

@@ -2,9 +2,7 @@
 
 읽기 전용 `vault add <name> <absolute path>`, `vault list`, `files/read --vault <name> --path <relative path>`, `paths`도 구현했다. 현재는 JSON이 기본 출력이고 명시적인 등록명과 경로를 요구한다. [Vault 연결](vault-connection.md)에 정확한 사용법과 제한을 기록한다. `follow`는 없는 위키 대상의 빈 노트 생성도 수행한다. 아래 일반 CLI 목표의 자동 Vault 선택·검색·본문 쓰기·안정적인 세부 오류 코드는 아직 제공하지 않는다.
 
-00 연결 검증 명령은 `serve`, `service ensure/wait/status/stop`, `bridge report`이며 명시적인 `--state-dir <절대 임시 경로>`를 요구한다. `bridge location`은 상태를 만들지 않고 이 클라이언트의 기본 OS 임시 경로를 JSON으로 반환한다. 인수 없는 실행은 도움말을 출력한다. [검증 절차](bridge-verification.md)를 참고한다. 나머지 아래 명령·JSON·종료 코드 계약은 구현 목표다.
-
-`service wait`는 외부 호스트가 시작한 서비스의 준비만 최대 5초 확인하며 프로세스를 만들지 않는다. 연결 파일 경로·프로토콜·PID를 반환하고 `reused: true`는 이미 실행 중인 서비스에 연결했다는 뜻이다. Windows Herdr는 이 명령으로 core가 관리하는 `serve`의 준비를 확인한다.
+제품에는 serve/service/bridge 진단 명령이 없다. 00 검증은 별도 herdrmd-diagnostics 실행 파일에서만 제공하며 [검증 절차](bridge-verification.md)를 따른다. 아래의 제품 serve/service는 향후 목표이고 현재 진단 도구의 별칭으로 연결하지 않는다.
 
 ```text
 herdrmd vault add/list

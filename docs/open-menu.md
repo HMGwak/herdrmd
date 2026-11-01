@@ -52,3 +52,5 @@ machine은 이 클라이언트 core에 등록한 호스트 별칭이다. 생략�
 ## 아이콘 출처
 
 `mods/herdrmd/obsidian.svg`는 [Obsidian 공식 로고](https://obsidian.md/images/obsidian-logo-gradient.svg) 원본이다. Obsidian은 해당 소유자의 상표이며 사용 지침은 [공식 브랜드 페이지](https://obsidian.md/brand)를 따른다. 이 통합은 비공식이다.
+
+제품 reader는 항상 Vault 화면을 열고 mode가 없거나 과거 probe 값이어도 진단 서비스를 시작하지 않는다. 00 검증은 별도 herdrmd-probe를 설치해 사용한다. [Windows 제품 설치](windows.md)는 진단 설치와 분리된다.

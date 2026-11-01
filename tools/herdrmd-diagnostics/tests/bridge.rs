@@ -8,7 +8,7 @@ use std::{
 
 fn command(directory: &Path, words: &[&str]) -> Value {
     eprintln!("launching bridge command: {words:?}");
-    let output = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+    let output = Command::new(env!("CARGO_BIN_EXE_herdrmd-diagnostics"))
         .args(words)
         .arg("--state-dir")
         .arg(directory)
@@ -27,7 +27,7 @@ struct Running(tempfile::TempDir);
 
 impl Drop for Running {
     fn drop(&mut self) {
-        let _ = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+        let _ = Command::new(env!("CARGO_BIN_EXE_herdrmd-diagnostics"))
             .args(["service", "stop", "--state-dir"])
             .arg(self.0.path())
             .output();
@@ -158,7 +158,7 @@ fn detached_round_trip_authentication_and_shutdown() {
     }
     drop(running);
     // Running's Drop stopped and waited for the child, including on assertion failure.
-    let stopped = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+    let stopped = Command::new(env!("CARGO_BIN_EXE_herdrmd-diagnostics"))
         .args(["service", "status", "--state-dir"])
         .arg(&directory)
         .output();
@@ -176,7 +176,7 @@ fn wait_observes_host_owned_service_without_spawning() {
     assert!(!directory.join("instance.lock").exists());
     assert!(!directory.join("service.json").exists());
 
-    let mut server = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+    let mut server = Command::new(env!("CARGO_BIN_EXE_herdrmd-diagnostics"))
         .args(["serve", "--state-dir"])
         .arg(&directory)
         .stdin(std::process::Stdio::null())
@@ -223,7 +223,7 @@ fn concurrent_ensure_and_stale_connection_recovery() {
         command(&directory, &["service", "status"])["mode"],
         "bridge-probe"
     );
-    let duplicate = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+    let duplicate = Command::new(env!("CARGO_BIN_EXE_herdrmd-diagnostics"))
         .args(["serve", "--state-dir"])
         .arg(&directory)
         .output()

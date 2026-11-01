@@ -1,4 +1,4 @@
-use crate::platform;
+use crate::{Result, platform};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Request, State},
@@ -18,7 +18,6 @@ use std::{
 };
 use tokio::sync::Notify;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const PROTOCOL: u32 = 1;
 const IDLE: Duration = Duration::from_secs(600);
 

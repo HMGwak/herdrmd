@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      include_diagnostics:
+        description: Build a separate Windows diagnostics artifact
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,17 +35,17 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace --locked
       - name: Test Herdr UI contracts
-        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs tests/scenarios/wikilinks.test.mjs
+        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs tests/scenarios/wikilinks.test.mjs tests/scenarios/product-entry.test.mjs
       - name: Build workspace
         run: cargo build --workspace --locked
       - name: Test workspace
         timeout-minutes: 2
         run: cargo test --workspace --locked -- --nocapture
-      - name: Stage Windows bridge probe
+      - name: Stage Windows product
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $bundle = Join-Path $env:RUNNER_TEMP 'herdrmd-bridge-windows'
+          $bundle = Join-Path $env:RUNNER_TEMP 'herdrmd-windows'
           $mod = Join-Path $bundle 'mods/herdrmd'
           New-Item -ItemType Directory -Force $mod | Out-Null
           Copy-Item target/debug/herdrmd.exe $mod
@@ -55,15 +60,36 @@ jobs:
           Copy-Item integrations/herdr/mods/herdrmd-new-menu/launcher.js (Join-Path $bundle 'mods/herdrmd-new-menu')
           Copy-Item integrations/herdr/mods/herdrmd/launcher.example.json $mod
           Copy-Item docs/open-menu.md (Join-Path $bundle 'open-menu.md')
-          Copy-Item docs/windows-bridge.md (Join-Path $bundle 'README.md')
+          Copy-Item docs/windows.md (Join-Path $bundle 'README.md')
           & (Join-Path $mod 'herdrmd.exe') --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload Windows bridge probe
+      - name: Upload Windows product
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: herdrmd-bridge-windows
-          path: ${{ runner.temp }}/herdrmd-bridge-windows/
+          name: herdrmd-windows
+          path: ${{ runner.temp }}/herdrmd-windows/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Stage optional Windows diagnostics
+        if: runner.os == 'Windows' && inputs.include_diagnostics
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $env:RUNNER_TEMP 'herdrmd-diagnostics-windows'
+          $mod = Join-Path $bundle 'mods/herdrmd-probe'
+          New-Item -ItemType Directory -Force $mod | Out-Null
+          Copy-Item target/debug/herdrmd-diagnostics.exe $mod
+          Copy-Item integrations/herdr/diagnostics/herdrmd-probe/*.js $mod
+          Copy-Item integrations/herdr/diagnostics/herdrmd-probe/mod.json $mod
+          Copy-Item docs/windows-bridge.md (Join-Path $bundle 'README.md')
+          & (Join-Path $mod 'herdrmd-diagnostics.exe') --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload optional Windows diagnostics
+        if: runner.os == 'Windows' && inputs.include_diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: herdrmd-diagnostics-windows
+          path: ${{ runner.temp }}/herdrmd-diagnostics-windows/
           retention-days: 7
           if-no-files-found: error
       - name: Build portable NAS reader
