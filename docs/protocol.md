@@ -1,10 +1,10 @@
 # Herdr와 로컬 서비스 계약
 
-이 문서는 구현 목표다. 현재 HTTP 서비스·JS mod·인증은 구현되지 않았다. 00 연결 검증에서 실제 Herdr 동작을 확인한 뒤 요청·응답 스키마를 구체화한다.
+00 연결 검증용 HTTP·인증·JS mod를 구현했다. 현재 실제 경로는 `GET /v1/health`, `POST /v1/echo`, `POST /v1/events`, `GET /v1/probe`, `POST /v1/stop`이다. 모두 Bearer 토큰을 요구하고 정확한 loopback Host와 Origin 부재를 검사한다. JSON 본문은 64 KiB, 인증 이후 처리 시간은 2초로 제한한다. Vault·문서·초안 API는 아직 없으며 아래 제품 계약은 향후 구현 목표다. [연결 검증](bridge-verification.md)에서 실제 결과와 미검증 범위를 구분한다.
 
 `herdrmd serve`는 `127.0.0.1`의 임의 포트에서 실행한다. 별도 서비스 crate를 만들지 않는다. `service ensure`는 기존 인스턴스를 재사용하거나 분리 실행하고 최대 5초 안에 준비 여부를 판정한다. 프로세스 수명은 부모 PID나 stdio EOF에 묶지 않으며 10분간 요청이 없으면 종료한다.
 
-연결 파일은 사용자 전용 로컬 상태 디렉터리의 `herdrmd-runtime/service.json`이다. 포트·실행별 토큰·프로토콜 버전을 저장하며 토큰은 인수·일반 stdout·로그에 출력하지 않는다. OS 권한, 단일 인스턴스 잠금과 stale 연결 정보 복구는 서비스 태스크에서 구현한다.
+제품의 연결 파일 목표는 사용자 전용 로컬 상태 디렉터리의 `herdrmd-runtime/service.json`이다. 00에서는 사용자 설정을 만들지 않고 `--state-dir`로 명시한 임시 디렉터리에 `service.json`과 `instance.lock`을 둔다. 포트·실행별 토큰·프로토콜 버전·PID를 저장하며 토큰은 인수·일반 stdout·로그에 출력하지 않는다. Rust 표준 File 잠금으로 단일 인스턴스를 유지하고 stale 연결 파일을 교체한다. Unix 디렉터리/파일은 0700/0600을 적용한다. Windows는 임시 경로의 상속 ACL을 사용하며 명시적인 사용자 전용 ACL·OS 기본 경로 정책은 후속 태스크에서 구현·검증한다.
 
 HTTP JSON API는 `/v1` 아래 Vault, 문서 읽기·생성·저장, 검색, 링크 해석, 초안, 변경 조회를 제공한다. 인증 없는 요청을 거부하고 요청 크기 제한을 둔다. 저장은 CLI와 동일한 코어를 사용한다. UI는 내부 API를 쓰고 에이전트는 CLI를 기본으로 사용한다.
 

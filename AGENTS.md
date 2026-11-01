@@ -2,13 +2,13 @@
 
 ## 범위와 구현 상태
 
-현재는 Rust workspace 초기 골격이다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
+현재는 Rust workspace와 00 연결 검증용 서비스·mod 단계다. 요청된 태스크 범위만 구현하고, 예정 기능을 이미 지원하는 것처럼 문서화하지 않는다. Rust 버전은 `rust-toolchain.toml`, 실행 파일 의존성은 추적하는 `Cargo.lock`을 기준으로 한다.
 
 ## 책임과 배치
 
 - `crates/herdrmd-core`: Vault·경로·원문·검색·링크·저장·복구·초안. CLI, HTTP, Herdr에 의존하지 않는다.
 - `crates/herdrmd`: 코어를 사용하는 CLI, `serve` 모드, 공식 Obsidian CLI 연결과 플랫폼별 실행·설치. 별도 서비스 crate를 만들지 않는다.
-- `integrations/herdr`: 향후 JS mod·서비스 클라이언트·화면과 병합용 키 설정. 파일 처리 규칙은 Rust 코어에 둔다.
+- `integrations/herdr`: JS mod·서비스 클라이언트·화면과 향후 병합용 키 설정. 파일 처리 규칙은 Rust 코어에 둔다.
 - `agent-skills`: 향후 배포 패키지. 개인 skill 원본은 기존 APM 저장소에서 관리하고 내보낸다. 양쪽을 별도로 편집하지 않는다.
 - `tests/fixtures`, `tests/scenarios`: 향후 합성 자료와 공통 인수 시나리오. 단위 테스트는 해당 Rust 모듈, crate 통합 테스트는 각 `tests/`에 둔다.
 - `docs`: 제품 기술 계약과 결정. 개인 계획·진행 기록은 Obsidian에 둔다.
@@ -35,6 +35,6 @@ cargo build --workspace --locked
 cargo test --workspace --locked
 ```
 
-macOS·Windows CI를 유지한다. CI 성공과 실제 Herdr 화면 검증을 구분해 기록한다. 초기 골격에는 도메인 테스트가 없으며 향후 기능별 위험과 완료 기준에 맞는 테스트를 추가한다. 줄바꿈 fixture는 `.gitattributes`에서 변환을 제외한다.
+macOS·Windows CI를 유지한다. CI 성공과 실제 Herdr 화면 검증을 구분해 기록한다. 연결 검증에는 분리 프로세스 통합 테스트가 있으며 Vault·저장 도메인 테스트는 후속 기능에 맞게 추가한다. 줄바꿈 fixture는 `.gitattributes`에서 변환을 제외한다.
 
 작업 완료 시 기술 계약은 저장소 문서에 반영한다. Obsidian 기록 작업이 요청된 경우 해당 태스크의 결과·검증·커밋과 프로젝트 허브의 현재 단계·다음 행동을 갱신한다. 추가 AGY CLI 호출은 사용자가 요청한 경우에만 수행한다.

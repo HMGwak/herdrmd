@@ -1,6 +1,13 @@
-fn main() {
-    println!(
-        "herdrmd {}: Rust workspace scaffold; commands and service are not implemented yet.",
-        env!("CARGO_PKG_VERSION")
-    );
+mod cli;
+mod platform;
+mod service;
+
+fn main() -> std::process::ExitCode {
+    match cli::run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("herdrmd: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }

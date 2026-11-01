@@ -1,6 +1,6 @@
 # CLI 계약
 
-이 문서는 구현 목표다. 현재 `cargo run -p herdrmd`는 골격 안내만 출력한다. 아래 명령·JSON·종료 코드는 아직 구현되지 않았다.
+현재 구현한 명령은 `serve`, `service ensure/status/stop`, `bridge report`이며 모두 명시적인 `--state-dir <절대 임시 경로>`를 요구하는 00 연결 검증용이다. 인수 없는 실행은 도움말을 출력한다. [검증 절차](bridge-verification.md)를 참고한다. 나머지 아래 명령·JSON·종료 코드 계약은 구현 목표다.
 
 ```text
 herdrmd vault add/list
