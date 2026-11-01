@@ -35,7 +35,7 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace --locked
       - name: Test Herdr UI contracts
-        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs tests/scenarios/wikilinks.test.mjs tests/scenarios/product-entry.test.mjs tests/scenarios/editing.test.mjs
+        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs tests/scenarios/wikilinks.test.mjs tests/scenarios/product-entry.test.mjs tests/scenarios/editing.test.mjs tests/scenarios/ask-agent.test.mjs
       - name: Build workspace
         run: cargo build --workspace --locked
       - name: Test workspace

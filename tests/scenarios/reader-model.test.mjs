@@ -347,6 +347,9 @@ globalThis.__herdrmdReaderLifecycle = lifecycle;
 const editSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/edit-model.js", import.meta.url), "utf8");
 const readerPrelude = `
 import { EditModel } from "data:text/javascript;base64,${Buffer.from(editSource).toString("base64")}";
+class AskAgent { constructor() {} }
+const panes = () => [];
+const readTextFile = async () => null;
 class EditTransport { async load() { return null; } }
 import { ReaderModel, parentPath, fileTitle, documentStatus } from "data:text/javascript;base64,${Buffer.from(source).toString("base64")}";
 const state = globalThis.__herdrmdReaderLifecycle;

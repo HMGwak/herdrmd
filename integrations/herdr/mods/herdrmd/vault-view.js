@@ -1,6 +1,6 @@
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
-import { exec, nextCommand, theme } from "herdr";
+import { exec, nextCommand, theme, panes, spaces, focused, home, readTextFile } from "herdr";
 import { ReaderModel, parentPath, fileTitle, documentStatus } from "./reader-model.js";
 import { VaultSettings } from "./vault-settings.js";
 import { splitFrontmatter } from "./frontmatter.js";
@@ -10,6 +10,7 @@ import { EditModel } from "./edit-model.js";
 import { EditTransport } from "./edit-transport.js";
 import { renderCheckboxes, renderCheckboxesSteps, toggleCheckbox } from "./checkboxes.js";
 import { WikiNavigation } from "./wiki-navigation.js";
+import { AskAgent, localSource, readyToAsk } from "./ask-agent.js";
 
 // The same read contract runs locally or on an explicitly selected core.
 export class VaultReader {
@@ -29,6 +30,29 @@ export class VaultReader {
       this.publishDocument(path, state);
       cx.notify();
     } });
+    this.askAgent = new AskAgent({
+      closed: () => this.closed,
+      source: id => localSource(this.options, id, panes(), spaces()),
+      panes,
+      ready: (path, saved) => readyToAsk(this.model, this.edits, path, saved),
+      vault: async () => {
+        const result = await exec(this.options.binary, ["vault", "list"]);
+        if (result.code !== 0) throw new Error(result.stderr.trim() || "볼트 조회 실패");
+        return JSON.parse(result.stdout).vaults?.find(v => v.name === this.vault)?.path;
+      },
+      skill: () => `${home()}/.codex/skills/obsidian-markdown/SKILL.md`,
+      readSkill: readTextFile,
+      checkCodex: async cwd => {
+        const result = await exec("codex", ["--version"], { cwd });
+        if (result.code !== 0) throw new Error(result.stderr.trim() || "로컬 Codex 실행 실패");
+      },
+      save: path => this.edits.flush(path),
+      command: async (name, args) => {
+        const result = await exec("herdr-app", ["do", name, JSON.stringify(args)]);
+        if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "pane 실행 실패");
+        return JSON.parse(result.stdout);
+      },
+    });
     this.settings = new VaultSettings(options, cx);
     this.settingsOpen = Boolean(options.settings);
     this.expandedProperties = new Set();
@@ -59,6 +83,38 @@ export class VaultReader {
         else if (command === "source" || command === "preview") { this.save(cx); this.mode = command; this.explorerOpen = false; cx.notify(); }
       }
     });
+  }
+
+  ask(cx) {
+    if (this.closed || this.askAgent.pending) return;
+    // Native pane focus is established by the toolbar click. Capture it before
+    // any await, never consult global focus to choose a later split target.
+    let source;
+    try { source = localSource(this.options, focused()?.pane, panes(), spaces()); }
+    catch (error) { this.notice = String(error); cx.notify(); return; }
+    const path = this.model.selected;
+    this.notice = "";
+    cx.spawn(async cx => {
+      try {
+        const pending = this.askAgent.start(source, path);
+        cx.notify();
+        await pending;
+      }
+      catch (error) { if (!this.closed) this.notice = String(error); }
+      if (!this.closed) cx.notify();
+    });
+  }
+
+  askButton(t) {
+    // A remote Space makes every reader there ineligible, even with local props.
+    const remote = this.options.machine || spaces().find(s => s.active)?.machine;
+    const disabled = remote || this.askAgent.pending;
+    return div().id("ask-agent").px(9).py(5).rounded(5).flex_none()
+      .text_size(12).text_color(disabled ? t.dim : t.muted)
+      .tooltip(remote ? "로컬 볼트·로컬 Space에서만 사용할 수 있습니다." : "Codex에 현재 문서 질문하기")
+      .accessibility_label("ASK AGENT").child("ASK AGENT")
+      .when(!disabled, el => el.cursor_pointer().hover(s => s.bg(t.hover))
+        .on_click((_event, cx) => this.ask(cx)));
   }
 
   async request(operation, path) {
@@ -431,6 +487,7 @@ export class VaultReader {
                 cx.stop_propagation(); this.save(cx, path); this.action(cx, () => m.closeTab(path));
               })))))
         .when(Boolean(document), el => el
+          .child(this.askButton(t))
           .when(!document.read_only, el => el.child(this.button("save-document", "저장", cx => this.save(cx), t)))
           .child(this.button("preview-mode", "읽기", cx => { this.save(cx); this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
           .child(this.button("source-mode", document.read_only ? "원문" : "편집", cx => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))))

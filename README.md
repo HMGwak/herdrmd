@@ -38,3 +38,5 @@ herdrmd/
 구성과 최종 폴더 배치는 [architecture](docs/architecture.md), [CLI 계약](docs/cli.md), [서비스 계약](docs/protocol.md), [개발 안내](docs/development.md), [초기 구조 결정](docs/decisions/0001-workspace-layout.md)에 기록한다. 각 문서의 기능 계약은 구현 목표이며 현재 구현 상태와 구분한다.
 
 구현 순서는 연결 검증 → Vault·원문 → 저장·복구 → 검색·링크 → 독립 CLI → 서비스·초안 → Herdr 화면 → 공식 Obsidian CLI·skills → 설치·릴리스다. 상세 TODO와 진행 기록은 개인 Obsidian 프로젝트 허브 `1_Project/herdrmd/herdrmd.md`에서 관리한다. 개인 계획과 실제 Vault 자료는 이 저장소에 복제하지 않는다.
+
+로컬 문서에서 Codex를 여는 [ASK AGENT 연결](docs/ask-agent.md)을 제공한다. 원격 Vault/Space에서는 비활성화된다.
