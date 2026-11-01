@@ -19,6 +19,13 @@ pub fn run() -> Result<()> {
         println!("herdrmd {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    if words == [Some("bridge"), Some("location")] {
+        println!(
+            "{}",
+            json!({"state_dir": super::platform::probe_directory()})
+        );
+        return Ok(());
+    }
     let (operation, flag_index) = match words.as_slice() {
         [Some("serve"), ..] => ("serve", 1),
         [

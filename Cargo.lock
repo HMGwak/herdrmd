@@ -220,6 +220,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "ureq",
+ "windows-sys",
 ]
 
 [[package]]

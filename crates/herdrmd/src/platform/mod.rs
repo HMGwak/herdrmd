@@ -2,7 +2,18 @@ use crate::service::Result;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+#[cfg(not(windows))]
 use std::process::{Child, Command, Stdio};
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::spawn_service;
+
+// The bridge probe uses disposable, local OS temporary storage, never app config.
+pub fn probe_directory() -> std::path::PathBuf {
+    std::env::temp_dir().join("herdrmd-00-bridge")
+}
 
 // Run only at the start of the standalone `serve` process, before opening state
 // or creating a runtime. Besides stdio, launchers can carry non-CLOEXEC pipes
@@ -86,6 +97,7 @@ pub fn publish_connection(directory: &Path, bytes: &[u8]) -> Result<()> {
     result
 }
 
+#[cfg(not(windows))]
 pub fn spawn_service(directory: &Path) -> Result<Child> {
     let mut command = Command::new(std::env::current_exe()?);
     command
@@ -99,13 +111,6 @@ pub fn spawn_service(directory: &Path) -> Result<Child> {
     {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
     Ok(command.spawn()?)
 }

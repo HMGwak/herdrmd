@@ -1,6 +1,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
-import { nextCommand, props, theme } from "herdr";
+import process from "process";
+import { appHome, exec, nextCommand, props, theme } from "herdr";
 import { connect } from "./api.js";
 
 const SAMPLE = "한글 연결 검증 — 안녕하세요 🌿\n둘째 줄과 공백을 그대로 보존합니다.\n";
@@ -8,7 +9,7 @@ const PROGRAMMATIC = "자동 입력 검증 — Rust ↔ Herdr 🌿\r\n마지막 
 
 export default class BridgeProbe extends View {
   init(_props, cx) {
-    const options = props();
+    const options = props() || {};
     this.instance = `bridge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.status = "Starting task 00 bridge probe…";
     this.changes = 0;
@@ -31,8 +32,20 @@ export default class BridgeProbe extends View {
     });
     cx.spawn(async (cx) => {
       try {
-        if (!options.binary || !options.state_dir) throw new Error("binary and state_dir props required");
-        this.api = await connect(options.binary, options.state_dir);
+        const windows = process.platform === "win32";
+        const localPath = (value) => typeof value === "string" &&
+          (windows ? /^(?:[a-z]:[\\/]|\\\\)/i.test(value) : value.startsWith("/"));
+        // Shared tabs may carry another client's paths. Use a locally installed
+        // probe on that client instead of trying to execute a Mac path on Windows.
+        const binary = localPath(options.binary) ? options.binary :
+          `${appHome()}/mods/herdrmd/herdrmd${windows ? ".exe" : ""}`;
+        let stateDir = localPath(options.state_dir) ? options.state_dir : null;
+        if (!stateDir) {
+          const location = await exec(binary, ["bridge", "location"]);
+          if (location.code !== 0) throw new Error("local bridge binary is unavailable");
+          stateDir = JSON.parse(location.stdout).state_dir;
+        }
+        this.api = await connect(binary, stateDir);
         await this.api.event("initialized", this.instance);
         await this.api.event("auth_rejection_observed", this.instance);
         await this.echo();

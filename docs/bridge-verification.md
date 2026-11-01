@@ -27,6 +27,8 @@ herdr-app do tab.new '{"name":"herdrmd · 00 bridge","space":"<existing space ID
 
 mod가 Herdr의 `exec`로 ensure를 실행한 뒤 연결 파일을 읽고 인증 GET, 무인증 401, 한글 POST echo를 검증한다. 토큰은 화면·명령 인수·일반 로그에 표시하지 않는다. 성공 화면에 PID와 UTF-8 바이트 수를 표시한다.
 
+mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 현재 exec에는 원격 대상이 없고 HTTP는 그 클라이언트의 loopback을 사용한다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
+
 실제 입력·링크·탭 검증 순서는 다음과 같다.
 
 1. 편집기에 합성 한글 문장을 입력하고 `native changes` 증가와 왕복 성공을 확인한다. IME 입력도 직접 확인한다.

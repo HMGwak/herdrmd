@@ -7,12 +7,14 @@ use std::{
 };
 
 fn command(directory: &Path, words: &[&str]) -> Value {
+    eprintln!("launching bridge command: {words:?}");
     let output = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
         .args(words)
         .arg("--state-dir")
         .arg(directory)
         .output()
         .unwrap();
+    eprintln!("bridge command exited: {words:?} ({})", output.status);
     assert!(
         output.status.success(),
         "{}",
@@ -47,7 +49,12 @@ fn agent() -> ureq::Agent {
 
 #[test]
 fn detached_round_trip_authentication_and_shutdown() {
-    let running = Running(tempfile::tempdir().unwrap());
+    let running = Running(
+        tempfile::Builder::new()
+            .prefix("herdrmd 한글 space ")
+            .tempdir()
+            .unwrap(),
+    );
     let directory = running.0.path().to_path_buf();
     let ensured = command(&directory, &["service", "ensure"]);
     let raw = fs::read(directory.join("service.json")).unwrap();
@@ -224,4 +231,42 @@ fn detached_service_does_not_hold_inherited_output_descriptors() {
         0,
         "service must not retain the launcher's unrelated output FD"
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn detached_service_does_not_hold_inherited_output_handles() {
+    use std::{io::Read, os::windows::io::AsRawHandle, sync::mpsc};
+    use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, SetHandleInformation};
+
+    let running = Running(tempfile::tempdir().unwrap());
+    let (mut reader, writer) = std::io::pipe().unwrap();
+    // SAFETY: the pipe writer owns a valid HANDLE for the entire call.
+    assert_ne!(
+        unsafe {
+            SetHandleInformation(
+                writer.as_raw_handle(),
+                HANDLE_FLAG_INHERIT,
+                HANDLE_FLAG_INHERIT,
+            )
+        },
+        0
+    );
+    command(running.0.path(), &["service", "ensure"]);
+    drop(writer);
+    let (sender, receiver) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let mut byte = [0];
+        let _ = sender.send(reader.read(&mut byte));
+    });
+    let result = receiver.recv_timeout(Duration::from_secs(2));
+    // Stop the service even if the handle probe fails, before joining the reader.
+    drop(running);
+    assert_eq!(
+        result
+            .expect("service retained inherited output handle")
+            .unwrap(),
+        0
+    );
+    worker.join().unwrap();
 }
