@@ -1,3 +1,5 @@
+import { isReadDocument } from "./reader-model.js";
+
 // Resolver response state, independent of the native view and path rules.
 export class WikiNavigation {
   constructor() { this.sequence = 0; this.closed = false; this.state = null; }
@@ -21,8 +23,10 @@ export class WikiNavigation {
         ![null, undefined].includes(result.fragment) && typeof result.fragment !== "string") throw new Error("잘못된 링크 조회 응답입니다.");
       action.fragment = result.fragment || null;
       if (result.status === "found" && result.matches.length === 1 && !result.truncated) {
+        const document = result.document ?? null;
+        if (document !== null && !isReadDocument(document, result.matches[0])) throw new Error("잘못된 문서 읽기 응답입니다.");
         this.state = null;
-        return { ...action, path: result.matches[0], created: result.created === true };
+        return { ...action, path: result.matches[0], created: result.created === true, document };
       }
       const incomplete = result.status === "incomplete" || Boolean(result.truncated);
       if ((result.status === "ambiguous" && result.matches.length > 1) || (incomplete && result.matches.length > 0)) {

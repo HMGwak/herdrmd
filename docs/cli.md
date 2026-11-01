@@ -38,3 +38,7 @@ herdrmd obsidian -- <공식 CLI 인수>
 ## 위키링크 열기와 빈 노트 생성
 
 `herdrmd follow --vault <등록명> --from <현재 상대경로.md> --target <위키 대상>`은 UI 링크 클릭에 사용한다. 기존 대상을 조회하고 완전한 not_found일 때만 빈 UTF-8 `.md`를 생성해 found로 반환한다. resolve와 같은 응답에 created boolean을 포함하며 실제 생성했을 때만 true다. resolve는 계속 조회만 수행하고 created는 false다. `--config-dir`은 registry 위치만 바꾸며 잠금/기록은 실행 호스트의 기본 OS 사용자 state/data 경로를 사용한다. 테스트에서는 해당 프로세스의 사용자 경로 환경 변수를 임시 위치로 분리한다.
+
+## 링크 조회와 본문을 한 번에 받기
+
+`follow-read --vault <등록명> --from <현재.md> --target <대상>`은 `{resolution, document}`를 반환한다. resolution은 follow와 같고 complete found 한 개일 때만 같은 호출에서 코어 read의 document를 포함한다. 그 외 document는 null이다. UI는 일치하는 경로의 원문 스냅샷을 바로 표시해 별도 read 왕복을 생략한다. read 실패는 stderr·비정상 종료로 반환하며 생성 뒤 읽기 실패 시 파일이 이미 만들어졌을 수 있다. 기존 resolve/follow/read 계약은 유지한다.

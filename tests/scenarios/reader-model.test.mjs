@@ -248,6 +248,51 @@ test("switching cached tabs cancels an in-flight selection; refresh rereads exac
   assert.match(documentStatus(model.document), /utf-8.*crlf/);
 });
 
+const prefetched = (path, text = "synthetic", overrides = {}) => ({ path, text, revision: "a".repeat(64),
+  bytes: text === null ? 3 : Buffer.byteLength(text), encoding: text === null ? "unsupported" : "utf-8", bom: false,
+  line_endings: "none", final_newline: false, read_only: true, ...overrides });
+
+test("a prefetched read replaces cached text without another RPC and invalidates older pending reads", async () => {
+  for (const previousPath of ["Target.md", "Other.md"]) {
+    const pending = deferred(), calls = [];
+    const model = new ReaderModel((operation, path) => { calls.push([operation, path]); return pending.promise; });
+    const old = model.open(previousPath, true);
+    const latest = prefetched("Target.md", "# Fresh\r\n");
+    model.documents.set("Target.md", prefetched("Target.md", "old cached text"));
+    const previousSequence = model.readSequence;
+    await model.open("Target.md", false, latest);
+    assert.equal(model.readSequence, previousSequence + 1);
+    assert.equal(model.selected, "Target.md");
+    assert.equal(model.document, latest);
+    assert.equal(model.readLoading, false);
+    assert.equal(model.readError, "");
+    pending.resolve(prefetched(previousPath, "obsolete")); await old;
+    assert.equal(model.document, latest);
+    assert.deepEqual(calls, [["read", previousPath]]);
+  }
+});
+
+test("prefetched unsupported text=null is a valid document; absent document keeps the read fallback", async () => {
+  const calls = [], model = new ReaderModel(async (operation, path) => { calls.push([operation, path]); return prefetched(path); });
+  const unsupported = prefetched("Unsupported.md", null);
+  await model.open("Unsupported.md", false, unsupported);
+  assert.equal(model.document, unsupported);
+  assert.equal(model.document.text, null);
+  assert.deepEqual(calls, []);
+  await model.open("Fallback.md", false, null);
+  assert.deepEqual(calls, [["read", "Fallback.md"]]);
+  assert.equal(model.document.path, "Fallback.md");
+});
+
+test("a mismatched prefetched document is rejected without caching or a fallback RPC", async () => {
+  let calls = 0;
+  const model = new ReaderModel(async () => { calls += 1; return prefetched("Target.md"); });
+  await model.open("Target.md", false, prefetched("Other.md"));
+  assert.equal(model.document, undefined);
+  assert.match(model.readError, /잘못된 문서 읽기 응답/);
+  assert.equal(calls, 0);
+});
+
 test("closing the selected tab selects its neighbor and invalidates a pending read", async () => {
   const slow = deferred();
   const model = new ReaderModel((_operation, path) => path === "slow.md" ? slow.promise : Promise.resolve(note("neighbor")));

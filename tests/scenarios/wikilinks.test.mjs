@@ -4,9 +4,10 @@ import test from "node:test";
 
 const moduleUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 const source = await readFile(new URL("../../integrations/herdr/mods/herdrmd/wikilinks.js", import.meta.url), "utf8");
-const navigationSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/wiki-navigation.js", import.meta.url), "utf8");
+const navigationRawSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/wiki-navigation.js", import.meta.url), "utf8");
 const readerModelSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/reader-model.js", import.meta.url), "utf8");
 const { ReaderModel } = await import(moduleUrl(readerModelSource));
+const navigationSource = navigationRawSource.replace('from "./reader-model.js"', `from "${moduleUrl(readerModelSource)}"`);
 const frontmatterSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/frontmatter.js", import.meta.url), "utf8");
 const { renderWikilinks } = await import(moduleUrl(source));
 const { WikiNavigation } = await import(moduleUrl(navigationSource));
@@ -18,6 +19,9 @@ const deferred = () => {
 };
 const from = () => ({ path: "folder/source.md", document: {}, generation: 1 });
 const same = (source) => (candidate) => candidate === source;
+const readDocument = (path, text = "synthetic", overrides = {}) => ({ path, text, revision: "a".repeat(64),
+  bytes: text === null ? 3 : Buffer.byteLength(text), encoding: text === null ? "unsupported" : "utf-8", bom: false,
+  line_endings: "none", final_newline: false, read_only: true, ...overrides });
 const found = (path, fragment = null) => ({ status: "found", matches: [path], fragment, truncated: false });
 
 test("wiki targets and aliases become table-bound private links without interpreting paths", () => {
@@ -117,6 +121,23 @@ test("created is carried only by a complete found result, never by an incomplete
   assert.equal(navigation.choose(0, same(source)).created, false);
 });
 
+test("complete found actions accept only a matching, fully shaped prefetched read document", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  for (const text of ["# Synthetic\r\n", null]) {
+    const document = readDocument("Target.md", text);
+    const action = await navigation.follow("Target", source, async () => ({ ...found("Target.md"), document }), same(source));
+    assert.equal(action.document, document);
+  }
+  for (const document of [readDocument("Wrong.md"), readDocument("Target.md", "body", { revision: "" }),
+    readDocument("Target.md", "body", { bytes: -1 }), readDocument("Target.md", "body", { read_only: false }),
+    readDocument("Target.md", null, { encoding: "utf-8" }), { path: "Target.md", text: "incomplete shape" }]) {
+    const action = await navigation.follow("Target", source, async () => ({ ...found("Target.md"), document }), same(source));
+    assert.equal(action, null);
+    assert.equal(navigation.state.kind, "message");
+    assert.match(navigation.state.message, /잘못된 문서 읽기 응답/);
+  }
+});
+
 test("ambiguous results require explicit path selection and cannot choose stale choices", async () => {
   const navigation = new WikiNavigation(), source = from();
   const action = await navigation.follow("Same", source, async () => ({ status: "ambiguous", matches: ["a/Same.md", "b/Same.md"], fragment: "^block", truncated: false }), same(source));
@@ -206,7 +227,7 @@ test("document switch, refresh generation, and close invalidate pending navigati
     const following = navigation.follow("Target", source, () => pending.promise, isCurrent);
     if (change === "close") navigation.close();
     else current = { ...source, generation: source.generation + 1, ...(change === "switch" ? { path: "different.md" } : {}) };
-    pending.resolve(found("Target.md"));
+    pending.resolve({ ...found("Target.md"), document: readDocument("Target.md") });
     assert.equal(await following, null);
     assert.equal(navigation.state, null);
   }
@@ -241,10 +262,10 @@ const readerHarness = () => {
 test("reader follows a link with exact from/target arguments on the configured NAS", async () => {
   const { reader, tasks, opened, cx, document } = readerHarness(), calls = [];
   const raw = document.text;
-  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify(found("notes/Target.md", "Heading")) }; };
+  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify({ resolution: found("notes/Target.md", "Heading"), document: null }) }; };
   reader.followLink(0, cx);
   await Promise.all(tasks);
-  assert.deepEqual(calls, [["/opt/herdrmd", ["follow", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
+  assert.deepEqual(calls, [["/opt/herdrmd", ["follow-read", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
   assert.deepEqual(opened, ["notes/Target.md"]);
   assert.match(reader.notice, /제목·블록/);
   assert.equal(document.text, raw);
@@ -253,7 +274,7 @@ test("reader follows a link with exact from/target arguments on the configured N
 
 test("native preview callbacks resolve only table links; HTTP and stale callbacks stay separate", async () => {
   const { reader, tasks, opened, external, cx, document } = readerHarness(), calls = [];
-  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify(found("Target.md")) }; };
+  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify({ resolution: found("Target.md"), document: null }) }; };
   reader.previewLink("herdrmd-wiki://resolve/forged/1", document, reader.model.selected, cx);
   reader.previewLink("https://example.test/reference", document, reader.model.selected, cx);
   reader.previewLink(reader.previewFor(document).links[0].url, {}, reader.model.selected, cx);
@@ -300,7 +321,7 @@ test("a created document replaces stale text and appears in expanded or previous
     const reader = Object.create(VaultReader.prototype), tasks = [], listCalls = [], readCalls = [], execCalls = [];
     let created = false;
     const sourceDocument = { text: "[[folder/New note]]", bytes: 19, encoding: "utf-8", line_endings: "lf", bom: false };
-    const blankDocument = { text: "", bytes: 0, encoding: "utf-8", line_endings: "none", bom: false };
+    const blankDocument = readDocument("folder/New note.md", "");
     const folderEntry = { name: "folder", path: "folder", directory: true };
     const sourceEntry = { name: "Source.md", path: "folder/Source.md", directory: false };
     const newEntry = { name: "New note.md", path: "folder/New note.md", directory: false };
@@ -321,19 +342,55 @@ test("a created document replaces stale text and appears in expanded or previous
       closed: false, notice: "", editor: { set_value() {} } });
     integration.exec = async (...args) => {
       execCalls.push(args); created = true;
-      return { code: 0, stdout: JSON.stringify({ ...found(newEntry.path), created: true }) };
+      return { code: 0, stdout: JSON.stringify({ resolution: { ...found(newEntry.path), created: true }, document: blankDocument }) };
     };
     const cx = { spawn(handler) { tasks.push(handler(cx)); }, notify() {} };
     reader.followLink(0, cx);
     let drained = 0;
     while (drained < tasks.length) { const batch = tasks.slice(drained); drained = tasks.length; await Promise.all(batch); }
-    assert.deepEqual(execCalls, [["/opt/herdrmd", ["follow", "--vault", "test-vault", "--from", sourceEntry.path, "--target", "folder/New note"], { on: "synthetic-nas" }]]);
+    assert.deepEqual(execCalls, [["/opt/herdrmd", ["follow-read", "--vault", "test-vault", "--from", sourceEntry.path, "--target", "folder/New note"], { on: "synthetic-nas" }]]);
     assert.equal(model.selected, newEntry.path);
-    assert.equal(model.document, blankDocument);
+    assert.deepEqual(model.document, blankDocument);
     assert.equal(model.document.text, "");
-    assert.ok(readCalls.includes(newEntry.path));
+    assert.deepEqual(readCalls, [sourceEntry.path]);
     assert.deepEqual(listCalls, ["", "folder", "", "folder"]);
     assert.ok(model.visibleEntries.some((entry) => entry.path === newEntry.path));
     assert.match(reader.notice, /빈 문서.*만들었습니다/);
+  }
+});
+
+
+test("a normal prefetched follow uses one RPC, while null or omitted documents retain the read fallback", async () => {
+  for (const mode of ["prefetched", "unsupported", "null", "omitted"]) {
+    const reader = Object.create(VaultReader.prototype), tasks = [], requests = [], execCalls = [];
+    const sourcePath = "folder/Source.md", targetPath = "folder/Target.md";
+    const document = readDocument(targetPath, mode === "unsupported" ? null : "# Target\r\n");
+    const model = new ReaderModel(async (operation, path) => {
+      requests.push([operation, path]);
+      if (operation === "files") return { entries: path === "" ? [{ name: "folder", path: "folder", directory: true }] :
+        [sourcePath, targetPath].map((path) => ({ name: path.split("/").pop(), path, directory: false })), truncated: false };
+      return path === sourcePath ? readDocument(sourcePath, "[[folder/Target]]") : document;
+    });
+    await model.list(""); await model.toggleFolder("folder"); await model.open(sourcePath);
+    requests.length = 0;
+    Object.assign(reader, { model, options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
+      previewMetadata: new WeakMap(), previewLinks: new WeakMap(), previewSequence: 0, wikiScope: "synthetic-prefetch",
+      closed: false, notice: "", editor: { set_value() {} } });
+    integration.exec = async (...args) => {
+      execCalls.push(args);
+      const payload = { resolution: found(targetPath) };
+      if (mode !== "omitted") payload.document = mode === "null" ? null : document;
+      return { code: 0, stdout: JSON.stringify(payload) };
+    };
+    const cx = { spawn(handler) { tasks.push(handler(cx)); }, notify() {} };
+    reader.followLink(0, cx);
+    let drained = 0;
+    while (drained < tasks.length) { const batch = tasks.slice(drained); drained = tasks.length; await Promise.all(batch); }
+    assert.equal(execCalls.length, 1);
+    assert.deepEqual(execCalls[0], ["/opt/herdrmd", ["follow-read", "--vault", "test-vault", "--from", sourcePath, "--target", "folder/Target"], { on: "synthetic-nas" }]);
+    assert.equal(model.selected, targetPath);
+    assert.deepEqual(model.document, document);
+    assert.deepEqual(requests, mode === "null" || mode === "omitted" ? [["read", targetPath]] : []);
+    assert.equal(model.readError, "");
   }
 });

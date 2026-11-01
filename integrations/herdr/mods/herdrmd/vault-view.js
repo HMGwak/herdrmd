@@ -86,13 +86,13 @@ export class VaultReader {
     });
   }
 
-  open(path, cx, { notice = "", created = false } = {}) {
+  open(path, cx, { notice = "", created = false, document = null } = {}) {
     this.wikiNavigation?.cancel();
     this.explorerOpen = false;
     // Set navigation feedback before spawn can publish the first loading frame.
     this.notice = notice;
     // A recreated path may still have an older open-tab snapshot in memory.
-    this.action(cx, () => this.model.open(path, created));
+    this.action(cx, () => this.model.open(path, created, document));
     if (created) this.action(cx, async () => {
       await this.model.refreshTree();
       if (!this.closed && this.model.selected === path) await this.model.reveal(path);
@@ -139,10 +139,13 @@ export class VaultReader {
 
   async followTarget(from, target) {
     const result = await exec(this.options.binary,
-      ["follow", "--vault", this.vault, "--from", from, "--target", target],
+      ["follow-read", "--vault", this.vault, "--from", from, "--target", target],
       this.options.machine ? { on: this.options.machine } : {});
     if (result.code !== 0) throw new Error(result.stderr.trim() || `링크 열기 실패 (${result.code})`);
-    return JSON.parse(result.stdout);
+    const payload = JSON.parse(result.stdout);
+    if (!payload || !payload.resolution || typeof payload.resolution !== "object" || Array.isArray(payload.resolution))
+      throw new Error("잘못된 링크 열기 응답입니다.");
+    return { ...payload.resolution, document: payload.document };
   }
 
   followLink(index, cx) {
@@ -170,7 +173,7 @@ export class VaultReader {
     this.mode = "preview";
     const notice = [action.fragment ? "제목·블록 위치 이동은 준비 중입니다." : "",
       action.created ? "빈 문서를 만들었습니다." : action.fragment ? "문서만 열었습니다." : ""].filter(Boolean).join(" ");
-    this.open(action.path, cx, { notice, created: action.created === true });
+    this.open(action.path, cx, { notice, created: action.created === true, document: action.document });
   }
 
   previewLink(url, document, path, cx) {

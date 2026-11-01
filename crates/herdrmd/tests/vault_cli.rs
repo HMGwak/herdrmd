@@ -26,10 +26,10 @@ fn cli_follow_creates_a_missing_note_using_isolated_user_state() {
         .output()
         .unwrap();
     assert!(registration.status.success());
-    for expected in [true, false] {
+    for (operation, expected) in [("follow-read", true), ("follow", false)] {
         let output = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
             .args([
-                "follow",
+                operation,
                 "--vault",
                 "demo",
                 "--from",
@@ -52,9 +52,23 @@ fn cli_follow_creates_a_missing_note_using_isolated_user_state() {
             String::from_utf8_lossy(&output.stderr)
         );
         let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(response["created"], expected);
-        assert_eq!(response["matches"][0], "folder/new.md");
-        assert_eq!(response["fragment"], "title");
+        let resolution = if operation == "follow-read" {
+            assert_eq!(response["document"]["path"], "folder/new.md");
+            assert_eq!(response["document"]["text"], "");
+            let read = run(
+                &config,
+                &["read", "--vault", "demo", "--path", "folder/new.md"],
+            );
+            assert!(read.status.success());
+            let read: Value = serde_json::from_slice(&read.stdout).unwrap();
+            assert_eq!(response["document"], read);
+            &response["resolution"]
+        } else {
+            &response
+        };
+        assert_eq!(resolution["created"], expected);
+        assert_eq!(resolution["matches"][0], "folder/new.md");
+        assert_eq!(resolution["fragment"], "title");
     }
     assert_eq!(fs::read(vault.join("folder/new.md")).unwrap(), b"");
     assert_eq!(

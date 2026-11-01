@@ -3,6 +3,18 @@ export const parentPath = (path) => path.split("/").slice(0, -1).join("/");
 export const fileTitle = (path) => path.split("/").pop() || "문서";
 export const documentStatus = (document) => `${document.bytes.toLocaleString()} bytes · ${document.encoding}${document.bom ? " BOM" : ""} · ${document.line_endings}`;
 
+// Shared validation for a CLI read bundled with link resolution. Raw source is
+// accepted unchanged, including unsupported text=null; a different path is not.
+export function isReadDocument(document, path) {
+  return document !== null && typeof document === "object" && !Array.isArray(document) &&
+    document.path === path && typeof document.revision === "string" && /^[0-9a-f]{64}$/i.test(document.revision) &&
+    Number.isSafeInteger(document.bytes) && document.bytes >= 0 &&
+    typeof document.bom === "boolean" && typeof document.final_newline === "boolean" && document.read_only === true &&
+    ["none", "lf", "crlf", "cr", "mixed"].includes(document.line_endings) &&
+    ((typeof document.text === "string" && document.encoding === "utf-8") ||
+      (document.text === null && document.encoding === "unsupported"));
+}
+
 export const TREE_MAX_VISIBLE = 1500;
 export const TREE_MAX_ENTRIES = 2000;
 export const TREE_MAX_FOLDERS = 64;
@@ -229,13 +241,18 @@ export class ReaderModel {
 
   get visibleEntries() { return this.tree().rows.filter((row) => row.kind === "entry").map((row) => row.entry); }
 
-  async open(path, refresh = false) {
+  async open(path, refresh = false, prefetchedDocument = null) {
     if (this.closed) return;
     const sequence = ++this.readSequence;
     this.selected = path;
     if (!this.tabs.includes(path)) this.tabs.push(path);
     this.readError = "";
     this.readLoading = false;
+    if (prefetchedDocument !== null && prefetchedDocument !== undefined) {
+      if (!isReadDocument(prefetchedDocument, path)) { this.readError = "잘못된 문서 읽기 응답입니다."; return; }
+      this.documents.set(path, prefetchedDocument);
+      return;
+    }
     if (!refresh && this.documents.has(path)) return;
     this.readLoading = true;
     try {

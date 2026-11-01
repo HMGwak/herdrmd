@@ -12,6 +12,7 @@ pub fn run() -> Result<()> {
              Usage: herdrmd vault list\n\
              Usage: herdrmd files/read --vault <name> --path <Vault-relative path>\n\
              Usage: herdrmd resolve/follow --vault <name> --from <source.md> --target <wiki target>\n\
+             Usage: herdrmd follow-read --vault <name> --from <source.md> --target <wiki target>\n\
              Usage: herdrmd paths\n\
              Usage: herdrmd serve --state-dir <absolute scratch directory>\n\
              Usage: herdrmd service <ensure|wait|status|stop> --state-dir <directory>\n\
@@ -27,7 +28,7 @@ pub fn run() -> Result<()> {
     if matches!(
         words.first(),
         Some(Some(
-            "vault" | "files" | "read" | "resolve" | "follow" | "paths"
+            "vault" | "files" | "read" | "resolve" | "follow" | "follow-read" | "paths"
         ))
     ) {
         return vault_command(&args);
@@ -101,13 +102,21 @@ fn vault_command(args: &[std::ffi::OsString]) -> Result<()> {
             if *operation == "files" { serde_json::to_value(vault.list(path)?)? }
             else { serde_json::to_value(document::read(vault, path)?)? }
         }
-        [Some(operation @ ("resolve" | "follow")), Some("--vault"), Some(vault), Some("--from"), Some(from), Some("--target"), Some(target)] => {
+        [Some(operation @ ("resolve" | "follow" | "follow-read")), Some("--vault"), Some(vault), Some("--from"), Some(from), Some("--target"), Some(target)] => {
             let registry = Registry::load(&config)?;
             let vault = registry.get(vault)?;
-            if *operation == "follow" { serde_json::to_value(herdrmd_core::markdown::follow(vault, from, target, &platform::user_directories()?)?)? }
-            else { serde_json::to_value(herdrmd_core::markdown::resolve(vault, from, target)?)? }
+            if *operation == "resolve" { serde_json::to_value(herdrmd_core::markdown::resolve(vault, from, target)?)? }
+            else {
+                let resolution = herdrmd_core::markdown::follow(vault, from, target, &platform::user_directories()?)?;
+                if *operation == "follow-read" {
+                    let document = if resolution.status == "found" && !resolution.truncated && resolution.matches.len() == 1 {
+                        Some(document::read(vault, &resolution.matches[0])?)
+                    } else { None };
+                    json!({"resolution":resolution,"document":document})
+                } else { serde_json::to_value(resolution)? }
+            }
         }
-        _ => return Err("usage: vault add <name> <absolute path> | vault list | files/read --vault <name> --path <relative path> | resolve/follow --vault <name> --from <source.md> --target <target> | paths; optional --config-dir <absolute path>".into()),
+        _ => return Err("usage: vault add <name> <absolute path> | vault list | files/read --vault <name> --path <relative path> | resolve/follow/follow-read --vault <name> --from <source.md> --target <target> | paths; optional --config-dir <absolute path>".into()),
     };
     println!("{}", serde_json::to_string(&value)?);
     Ok(())
