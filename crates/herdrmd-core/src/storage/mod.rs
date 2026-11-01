@@ -1,4 +1,4 @@
-//! Create-only publication. Existing documents are never opened for writing.
+//! Revision-checked atomic publication with private recovery records.
 use crate::{
     Result, platform,
     platform::UserDirectories,
@@ -139,6 +139,117 @@ impl Creation {
     }
 }
 
+/// Replace a Markdown document after checking its byte revision. The lock coordinates
+/// herdrmd writers only; external writers can still race the last revision check.
+pub fn write(
+    vault: &Vault,
+    relative: &str,
+    expected_revision: &str,
+    text: &str,
+    directories: &UserDirectories,
+) -> Result<crate::document::Document> {
+    use crate::document;
+    let guard = Creation::begin(vault, directories)?;
+    let current = document::read(vault, relative)?;
+    if current.revision != expected_revision {
+        return Err("revision conflict; reload the original before retrying".into());
+    }
+    if current.read_only || text.contains('\0') {
+        return Err("document encoding or line endings are read-only".into());
+    }
+    let destination = vault.resolve(relative)?;
+    let permissions = fs::metadata(&destination)?.permissions();
+    if permissions.readonly() {
+        return Err("document is read-only".into());
+    }
+    let directory = destination.parent().ok_or("document parent missing")?;
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let encoded = match current.line_endings {
+        "crlf" => normalized.replace('\n', "\r\n"),
+        "cr" => normalized.replace('\n', "\r"),
+        _ => normalized,
+    };
+    let mut next = Vec::new();
+    let mut previous = Vec::new();
+    if current.bom {
+        next.extend_from_slice(&[0xef, 0xbb, 0xbf]);
+        previous.extend_from_slice(&[0xef, 0xbb, 0xbf]);
+    }
+    next.extend_from_slice(encoded.as_bytes());
+    previous.extend_from_slice(
+        current
+            .text
+            .as_ref()
+            .ok_or("unsupported encoding")?
+            .as_bytes(),
+    );
+    if next.len() as u64 > document::MAX_BYTES {
+        return Err("document exceeds 1 MiB".into());
+    }
+    if previous == next {
+        return Ok(current);
+    }
+    let operation = tempfile::Builder::new()
+        .prefix("write-")
+        .tempdir_in(&guard.recovery)?
+        .keep();
+    let mut backup = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(operation.join("original.bin"))?;
+    backup.write_all(&previous)?;
+    backup.sync_all()?;
+    let mut candidate = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(operation.join("new.bin"))?;
+    candidate.write_all(&next)?;
+    candidate.sync_all()?;
+    let record = json!({"operation":"write", "path":relative,
+        "expected_revision":expected_revision,
+        "new_revision":blake3::hash(&next).to_hex().to_string(),
+        "bytes":next.len(), "backup":"original.bin", "candidate":"new.bin"});
+    let mut journal = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(operation.join("prepared.json"))?;
+    journal.write_all(&serde_json::to_vec(&record)?)?;
+    journal.sync_all()?;
+    #[cfg(unix)]
+    {
+        fs::File::open(&operation)?.sync_all()?;
+        fs::File::open(&guard.recovery)?.sync_all()?;
+    }
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".herdrmd-write-")
+        .tempfile_in(directory)?;
+    temporary.write_all(&next)?;
+    temporary.as_file().set_permissions(permissions)?;
+    temporary.as_file().sync_all()?;
+    if vault.resolve(relative)? != destination
+        || document::read(vault, relative)?.revision != expected_revision
+    {
+        return Err("revision conflict; original changed during save".into());
+    }
+    // persist atomically replaces on supported platforms; never truncate the original.
+    temporary.persist(&destination)?;
+    #[cfg(unix)]
+    fs::File::open(directory)?.sync_all()?;
+    let mut completed = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(operation.join("completed.json"))?;
+    completed.write_all(&serde_json::to_vec(&record)?)?;
+    completed.sync_all()?;
+    #[cfg(unix)]
+    fs::File::open(&operation)?.sync_all()?;
+    let saved = document::read(vault, relative)?;
+    if saved.revision != blake3::hash(&next).to_hex().as_str() {
+        return Err("revision conflict; document changed after save".into());
+    }
+    Ok(saved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,6 +272,10 @@ mod tests {
             Creation::begin(&vault, &dirs).is_err(),
             "another herdrmd writer must not enter"
         );
+        fs::write(files.join("existing.md"), "original").unwrap();
+        let existing = crate::document::read(&vault, "existing.md").unwrap();
+        assert!(write(&vault, "existing.md", &existing.revision, "changed", &dirs).is_err());
+        assert_eq!(fs::read(files.join("existing.md")).unwrap(), b"original");
         // Simulate a non-cooperating writer after the resolver's absence check.
         let bytes = b"External writer\r\n";
         fs::write(files.join("new.md"), bytes).unwrap();

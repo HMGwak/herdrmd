@@ -13,6 +13,9 @@ pub fn run() -> Result<()> {
              Usage: herdrmd files/read --vault <name> --path <Vault-relative path>\n\
              Usage: herdrmd resolve/follow --vault <name> --from <source.md> --target <wiki target>\n\
              Usage: herdrmd follow-read --vault <name> --from <source.md> --target <wiki target>\n\
+             Usage: herdrmd write --vault <name> --path <path> --expected-rev <revision> --stdin\n\
+             Usage: herdrmd relay-prepare\n\
+             Usage: herdrmd relay --request <absolute JSON path>\n\
              Usage: herdrmd paths",
             env!("CARGO_PKG_VERSION")
         );
@@ -25,7 +28,7 @@ pub fn run() -> Result<()> {
     if matches!(
         words.first(),
         Some(Some(
-            "vault" | "files" | "read" | "resolve" | "follow" | "follow-read" | "paths"
+            "vault" | "files" | "read" | "write" | "resolve" | "follow" | "follow-read" | "paths"
         ))
     ) {
         return vault_command(&args);
@@ -59,6 +62,14 @@ fn vault_command(args: &[std::ffi::OsString]) -> Result<()> {
             let vault = registry.get(vault)?;
             if *operation == "files" { serde_json::to_value(vault.list(path)?)? }
             else { serde_json::to_value(document::read(vault, path)?)? }
+        }
+        [Some("write"), Some("--vault"), Some(vault), Some("--path"), Some(path), Some("--expected-rev"), Some(revision), Some("--stdin")] => {
+            use std::io::Read;
+            let mut text = String::new();
+            std::io::stdin().take(document::MAX_BYTES + 1).read_to_string(&mut text)?;
+            if text.len() as u64 > document::MAX_BYTES { return Err("document exceeds 1 MiB".into()); }
+            let registry = Registry::load(&config)?;
+            serde_json::to_value(herdrmd_core::storage::write(registry.get(vault)?, path, revision, &text, &platform::user_directories()?)?)?
         }
         [Some(operation @ ("resolve" | "follow" | "follow-read")), Some("--vault"), Some(vault), Some("--from"), Some(from), Some("--target"), Some(target)] => {
             let registry = Registry::load(&config)?;

@@ -9,7 +9,7 @@ export function isReadDocument(document, path) {
   return document !== null && typeof document === "object" && !Array.isArray(document) &&
     document.path === path && typeof document.revision === "string" && /^[0-9a-f]{64}$/i.test(document.revision) &&
     Number.isSafeInteger(document.bytes) && document.bytes >= 0 &&
-    typeof document.bom === "boolean" && typeof document.final_newline === "boolean" && document.read_only === true &&
+    typeof document.bom === "boolean" && typeof document.final_newline === "boolean" && typeof document.read_only === "boolean" &&
     ["none", "lf", "crlf", "cr", "mixed"].includes(document.line_endings) &&
     ((typeof document.text === "string" && document.encoding === "utf-8") ||
       (document.text === null && document.encoding === "unsupported"));

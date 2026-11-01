@@ -262,6 +262,7 @@ name = "herdrmd"
 version = "0.1.0"
 dependencies = [
  "herdrmd-core",
+ "libc",
  "serde_json",
  "tempfile",
 ]

@@ -127,7 +127,7 @@ fn cli_registration_listing_and_read_do_not_need_service() {
         if args[0] == "read" {
             assert_eq!(value["text"], content.trim_start_matches('\u{feff}'));
             assert_eq!(value["bom"], true);
-            assert_eq!(value["read_only"], true);
+            assert_eq!(value["read_only"], false);
         }
     }
     let resolved = run(
@@ -161,4 +161,136 @@ fn cli_registration_listing_and_read_do_not_need_service() {
     );
     assert_eq!(fs::read(vault.join("노트.md")).unwrap(), content.as_bytes());
     assert_eq!(fs::read_dir(&vault).unwrap().count(), 1);
+}
+
+#[test]
+fn cli_write_stdin_checks_revision_and_preserves_bom_crlf() {
+    use std::{io::Write, process::Stdio};
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let files = root.join("vault");
+    fs::create_dir(&files).unwrap();
+    let config = root.join("config");
+    let vault = herdrmd_core::vault::Registry::add(&config, "demo", &files).unwrap();
+    fs::write(files.join("note.md"), "\u{feff}before\r\n").unwrap();
+    let revision = herdrmd_core::document::read(&vault, "note.md")
+        .unwrap()
+        .revision;
+    for (expected, success) in [(&revision[..], true), (&revision[..], false)] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+            .args([
+                "write",
+                "--vault",
+                "demo",
+                "--path",
+                "note.md",
+                "--expected-rev",
+                expected,
+                "--stdin",
+            ])
+            .arg("--config-dir")
+            .arg(&config)
+            .env("HOME", &root)
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_STATE_HOME", root.join("state"))
+            .env("APPDATA", root.join("appdata"))
+            .env("LOCALAPPDATA", root.join("localappdata"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all("after 한글\n".as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(
+            output.status.success(),
+            success,
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if success {
+            let saved: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(saved["text"], "after 한글\r\n");
+            assert_ne!(saved["revision"], revision);
+        } else {
+            assert!(String::from_utf8_lossy(&output.stderr).contains("revision conflict"));
+        }
+        assert_eq!(
+            fs::read(files.join("note.md")).unwrap(),
+            "\u{feff}after 한글\r\n".as_bytes()
+        );
+    }
+}
+
+#[test]
+fn simultaneous_processes_with_same_revision_publish_only_once() {
+    use std::{io::Write, process::Stdio};
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let files = root.join("vault");
+    fs::create_dir(&files).unwrap();
+    let config = root.join("config");
+    let vault = herdrmd_core::vault::Registry::add(&config, "demo", &files).unwrap();
+    fs::write(files.join("note.md"), "original").unwrap();
+    let revision = herdrmd_core::document::read(&vault, "note.md")
+        .unwrap()
+        .revision;
+    let mut children = Vec::new();
+    for _ in 0..2 {
+        children.push(
+            Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+                .args([
+                    "write",
+                    "--vault",
+                    "demo",
+                    "--path",
+                    "note.md",
+                    "--expected-rev",
+                    &revision,
+                    "--stdin",
+                ])
+                .arg("--config-dir")
+                .arg(&config)
+                .env("HOME", &root)
+                .env("XDG_DATA_HOME", root.join("data"))
+                .env("XDG_STATE_HOME", root.join("state"))
+                .env("APPDATA", root.join("appdata"))
+                .env("LOCALAPPDATA", root.join("localappdata"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+    }
+    for (index, child) in children.iter_mut().enumerate() {
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(format!("writer {index}").as_bytes())
+            .unwrap();
+    }
+    let outputs: Vec<_> = children
+        .into_iter()
+        .map(|c| c.wait_with_output().unwrap())
+        .collect();
+    assert_eq!(outputs.iter().filter(|o| o.status.success()).count(), 1);
+    let winner = outputs.iter().find(|o| o.status.success()).unwrap();
+    let saved: Value = serde_json::from_slice(&winner.stdout).unwrap();
+    assert_eq!(
+        fs::read_to_string(files.join("note.md")).unwrap(),
+        saved["text"].as_str().unwrap()
+    );
+    let loser = outputs.iter().find(|o| !o.status.success()).unwrap();
+    let error = String::from_utf8_lossy(&loser.stderr);
+    assert!(
+        error.contains("revision conflict") || error.contains("busy"),
+        "{error}"
+    );
 }

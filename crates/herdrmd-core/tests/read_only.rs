@@ -59,7 +59,7 @@ fn listing_and_reads_enforce_boundary_and_exclusions() {
     let before = fs::read(root.join("폴더/노트.md")).unwrap();
     let read = document::read(&vault, "폴더/노트.md").unwrap();
     assert_eq!(read.text.as_deref(), Some("안녕하세요 🌿\n"));
-    assert!(read.read_only);
+    assert!(!read.read_only);
     assert_eq!(fs::read(root.join("폴더/노트.md")).unwrap(), before);
 }
 

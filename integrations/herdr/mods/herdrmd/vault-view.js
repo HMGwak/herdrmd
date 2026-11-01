@@ -6,6 +6,9 @@ import { VaultSettings } from "./vault-settings.js";
 import { splitFrontmatter } from "./frontmatter.js";
 import { frontmatterView } from "./frontmatter-view.js";
 import { renderWikilinks } from "./wikilinks.js";
+import { EditModel } from "./edit-model.js";
+import { EditTransport } from "./edit-transport.js";
+import { renderCheckboxes, toggleCheckbox } from "./checkboxes.js";
 import { WikiNavigation } from "./wiki-navigation.js";
 
 // The same read contract runs locally or on an explicitly selected core.
@@ -15,6 +18,13 @@ export class VaultReader {
     this.vault = options.vault || "personal";
     this.label = options.label || `Obsidian · ${this.vault}`;
     this.model = new ReaderModel((operation, path) => this.request(operation, path));
+    this.transport = new EditTransport(options, this.vault);
+    this.edits = new EditModel({ load: path => this.transport.load(path), persist: (path, draft) => this.transport.persist(path, draft), write: (path, rev, text) => this.transport.write(path, rev, text), changed: path => {
+      const state = this.edits.states.get(path);
+      if (this.closed || !state || !this.model.documents.has(path)) return;
+      this.model.documents.set(path, { ...state.document, text: state.text });
+      cx.notify();
+    } });
     this.settings = new VaultSettings(options, cx);
     this.settingsOpen = Boolean(options.settings);
     this.expandedProperties = new Set();
@@ -27,7 +37,7 @@ export class VaultReader {
     this.explorerOpen = true;
     this.notice = "";
     this.closed = false;
-    this.editor = EditorState.new({ language: "markdown", value: "", readonly: true, soft_wrap: true });
+    this.createEditor(true);
     this.action(cx, () => this.model.list(""));
     if (options.file) this.open(options.file, cx);
     cx.spawn(async (cx) => {
@@ -41,7 +51,8 @@ export class VaultReader {
         else if (command === "dismiss-link") { this.wikiNavigation?.cancel(); cx.notify(); }
         else if (command === "properties") this.toggleProperties(cx);
         else if (command === "browse") { this.explorerOpen = true; cx.notify(); }
-        else if (command === "source" || command === "preview") { this.mode = command; this.explorerOpen = false; cx.notify(); }
+        else if (command === "save") this.save(cx);
+        else if (command === "source" || command === "preview") { this.save(cx); this.mode = command; this.explorerOpen = false; cx.notify(); }
       }
     });
   }
@@ -54,12 +65,56 @@ export class VaultReader {
     return JSON.parse(result.stdout);
   }
 
+  createEditor(readonly) {
+    this.editor?.release(); this.editorReadonly = readonly;
+    this.editor = EditorState.new({ language: "markdown", value: "", readonly, soft_wrap: true });
+    this.editor.on("change", (_event, cx) => this.editorChanged(cx));
+    this.editorDocument = null;
+  }
+
+  editorChanged(cx) {
+      if (this.closed || this.settingEditor) return;
+      const path = this.model.selected, value = this.editor.value();
+      if (value === this.editorBaseline) return;
+      const state = this.edits.states.get(path);
+      let text = value;
+      if (state?.document.line_endings === "crlf") text = value.replace(/\r\n|\r|\n/g, "\r\n");
+      else if (state?.document.line_endings === "cr") text = value.replace(/\r\n|\r|\n/g, "\r");
+      if (state?.document.text?.startsWith("\uFEFF") && !text.startsWith("\uFEFF")) text = "\uFEFF" + text;
+      this.editorBaseline = value;
+      if (!this.edits.edit(path, text)) return;
+      const version = this.edits.states.get(path).version;
+      cx.notify();
+      cx.spawn(async cx => {
+        await cx.sleep(1000);
+        if (!this.closed && this.edits.states.get(path)?.version === version) { await this.edits.flush(path); if (!this.closed) { this.syncEditor(); cx.notify(); } }
+      });
+  }
+
+  save(cx, path = this.model.selected) { this.action(cx, () => this.edits.flush(path)); }
+
+  reload(cx) {
+    const path = this.model.selected;
+    this.action(cx, async () => {
+      const document = await this.edits.reload(path, () => this.request("read", path), (path, draft) => this.transport.archive(path, draft));
+      this.model.documents.set(path, document);
+    });
+  }
+
   syncEditor() {
     if (this.closed) return;
     const document = this.model.document;
     if (this.wikiNavigation?.state && !this.currentLinkSource(this.wikiNavigation.state.source)) this.wikiNavigation.cancel();
+    const state = document && this.edits.states.get(document.path);
+    const readonly = !document || document.read_only || !state || state.loading || state.reloading || state.blocked;
+    if (readonly !== this.editorReadonly) this.createEditor(readonly);
     if (document !== this.editorDocument) {
-      this.editor.set_value(document?.text ?? "");
+      this.settingEditor = true;
+      if (this.editor.value() !== (document?.text ?? "")) this.editor.set_value(document?.text ?? "");
+      // The native editor may normalize CRLF to LF. Deferred change events for
+      // this programmatic value must not create a new dirty revision.
+      this.editorBaseline = this.editor.value();
+      this.settingEditor = false;
       this.editorDocument = document;
     }
   }
@@ -70,7 +125,15 @@ export class VaultReader {
       const pending = operation();
       this.syncEditor();
       if (!this.closed) cx.notify();
-      await pending;
+      try {
+        await pending;
+        if (this.closed) return;
+        const document = this.model.document;
+        if (document) {
+          const state = await this.edits.attach(document);
+          if (!this.closed && this.model.selected === document.path) this.model.documents.set(document.path, { ...state.document, text: state.text });
+        }
+      } catch (error) { this.notice = String(error); }
       if (this.closed) return;
       this.syncEditor();
       cx.notify();
@@ -82,6 +145,7 @@ export class VaultReader {
     this.explorerOpen = false;
     // Set navigation feedback before spawn can publish the first loading frame.
     this.notice = notice;
+    this.save(cx);
     // A recreated path may still have an older open-tab snapshot in memory.
     this.action(cx, () => this.model.open(path, created, document));
     if (created) this.action(cx, async () => {
@@ -101,7 +165,12 @@ export class VaultReader {
     this.notice = "";
     this.action(cx, () => Promise.all([
       this.model.refreshTree(),
-      this.model.selected ? this.model.open(this.model.selected, true) : Promise.resolve(),
+      this.model.selected ? (async () => {
+        const path = this.model.selected;
+        await this.edits.flush(path);
+        const state = this.edits.states.get(path);
+        if (state && !state.dirty && !state.blocked) await this.edits.reload(path, () => this.request("read", path), (path, draft) => this.transport.archive(path, draft));
+      })() : Promise.resolve(),
     ]));
   }
 
@@ -119,7 +188,10 @@ export class VaultReader {
     if (!this.previewMetadata.has(document)) this.previewMetadata.set(document, splitFrontmatter(document.text));
     if (!this.previewLinks.has(document)) {
       const metadata = this.previewMetadata.get(document);
-      this.previewLinks.set(document, renderWikilinks(metadata ? metadata.body : document.text, `${this.wikiScope}-${++this.previewSequence}`));
+      const scope = `${this.wikiScope}-${++this.previewSequence}`;
+      const checks = renderCheckboxes(document.text, scope);
+      const body = metadata ? splitFrontmatter(checks.markdown).body : checks.markdown;
+      this.previewLinks.set(document, { ...renderWikilinks(body, scope), checks: checks.byUrl });
     }
     return this.previewLinks.get(document);
   }
@@ -170,7 +242,12 @@ export class VaultReader {
   previewLink(url, document, path, cx) {
     if (this.closed || document !== this.model.document || path !== this.model.selected) return;
     const preview = this.previewFor(document), link = preview.byUrl.get(url);
-    if (link) this.followLink(preview.links.indexOf(link), cx);
+    const check = preview.checks.get(url);
+    if (check) {
+      const text = toggleCheckbox(document.text, check);
+      if (text !== null && this.edits.edit(path, text)) this.save(cx, path);
+    }
+    else if (link) this.followLink(preview.links.indexOf(link), cx);
     else if (/^https?:\/\//i.test(url)) cx.open_url(url);
     else { this.notice = "이 링크 형식의 탐색은 아직 지원하지 않습니다. 원문에서 링크를 확인하세요."; cx.notify(); }
   }
@@ -272,12 +349,17 @@ export class VaultReader {
           .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === path ? t.foreground : t.muted).child(fileTitle(path)))
           .child(div().id(`close-document-${index}`).size(22).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
             .tooltip("문서 닫기").accessibility_label(`${fileTitle(path)} 닫기`).child("×").on_click((_event, cx) => {
-              cx.stop_propagation(); this.action(cx, () => m.closeTab(path));
+              cx.stop_propagation(); this.save(cx, path); this.action(cx, () => m.closeTab(path));
             })))))
       .child(h_flex().h(42).flex_none().min_w(0).px(12).gap(5).items_center().border_b(1).border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).tooltip(m.selected || this.label).child(m.selected || this.label))
-        .child(this.button("preview-mode", "읽기", (cx) => { this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
-        .child(this.button("source-mode", "원문", (cx) => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))
+        .when(Boolean(document && !document.read_only), el => el.child(this.button("save-document", "저장", cx => this.save(cx), t)))
+        .child(this.button("preview-mode", "읽기", (cx) => { this.save(cx); this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
+        .child(this.button("source-mode", document?.read_only ? "원문" : "편집", (cx) => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))
+      .when(Boolean(this.edits.states.get(m.selected)?.error), el => el.child(v_flex().px(12).py(8).gap(5)
+        .child(div().text_size(12).child(this.edits.states.get(m.selected)?.error || ""))
+        .child(h_flex().gap(8).child(this.button("retry-save", "재시도", cx => this.save(cx), t))
+          .child(this.button("reload-original", "원본 다시 읽기 · 초안 보관", cx => this.reload(cx), t)))))
       .when(Boolean(linkPanel), (el) => el.child(linkPanel))
       .child(body);
   }
@@ -287,7 +369,9 @@ export class VaultReader {
     const t = theme(), m = this.model;
     const showExplorer = !this.compact || this.explorerOpen;
     const showDocument = !this.compact || !this.explorerOpen;
-    return v_flex().id("herdrmd-vault").size_full().min_h(0).min_w(0).bg(t.surface).text_color(t.foreground)
+    return v_flex().id("herdrmd-vault").on_key_down((event, cx) => {
+      if (event.keystroke === "cmd-s" || event.keystroke === "ctrl-s") { cx.stop_propagation(); this.save(cx); }
+    }).size_full().min_h(0).min_w(0).bg(t.surface).text_color(t.foreground)
       .on_size_change(({ width }, cx) => {
         const compact = width < 620;
         if (compact !== this.compact) { this.compact = compact; cx.notify(); }
@@ -304,7 +388,7 @@ export class VaultReader {
         .when(showExplorer, (el) => el.child(this.explorer(t)))
         .when(showDocument, (el) => el.child(this.documentPane(t))))
       .child(h_flex().h(28).flex_none().px(12).gap(10).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim)
-        .child(div().flex_none().child("본문 읽기 전용"))
+        .child(div().flex_none().child(m.document?.read_only ? "읽기 전용" : (this.edits.states.get(m.selected)?.status || "읽기")))
         .child(div().flex_1().min_w(0).truncate().tooltip(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))
           .child(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))));
   }

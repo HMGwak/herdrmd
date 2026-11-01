@@ -1,6 +1,6 @@
 //! Shared domain and file operations for herdrmd.
 //!
-//! Vault reading and create-only notes. No CLI, HTTP, Herdr or Obsidian runtime dependency.
+//! Vault reading, create-only notes and revision-checked saving. No CLI, HTTP, Herdr or Obsidian runtime dependency.
 
 pub mod document;
 pub mod markdown;

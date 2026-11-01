@@ -1,6 +1,6 @@
 # CLI 계약
 
-읽기 전용 `vault add <name> <absolute path>`, `vault list`, `files/read --vault <name> --path <relative path>`, `paths`도 구현했다. 현재는 JSON이 기본 출력이고 명시적인 등록명과 경로를 요구한다. [Vault 연결](vault-connection.md)에 정확한 사용법과 제한을 기록한다. `follow`는 없는 위키 대상의 빈 노트 생성도 수행한다. 아래 일반 CLI 목표의 자동 Vault 선택·검색·본문 쓰기·안정적인 세부 오류 코드는 아직 제공하지 않는다.
+읽기 전용 `vault add <name> <absolute path>`, `vault list`, `files/read --vault <name> --path <relative path>`, `paths`도 구현했다. 현재는 JSON이 기본 출력이고 명시적인 등록명과 경로를 요구한다. [Vault 연결](vault-connection.md)에 정확한 사용법과 제한을 기록한다. `follow`는 없는 위키 대상의 빈 노트 생성도 수행한다. 아래 일반 CLI 목표의 자동 Vault 선택·검색·안정적인 세부 오류 코드는 아직 제공하지 않는다.
 
 제품에는 serve/service/bridge 진단 명령이 없다. 00 검증은 별도 herdrmd-diagnostics 실행 파일에서만 제공하며 [검증 절차](bridge-verification.md)를 따른다. 아래의 제품 serve/service는 향후 목표이고 현재 진단 도구의 별칭으로 연결하지 않는다.
 
@@ -40,3 +40,9 @@ herdrmd obsidian -- <공식 CLI 인수>
 ## 링크 조회와 본문을 한 번에 받기
 
 `follow-read --vault <등록명> --from <현재.md> --target <대상>`은 `{resolution, document}`를 반환한다. resolution은 follow와 같고 complete found 한 개일 때만 같은 호출에서 코어 read의 document를 포함한다. 그 외 document는 null이다. UI는 일치하는 경로의 원문 스냅샷을 바로 표시해 별도 read 왕복을 생략한다. read 실패는 stderr·비정상 종료로 반환하며 생성 뒤 읽기 실패 시 파일이 이미 만들어졌을 수 있다. 기존 resolve/follow/read 계약은 유지한다.
+
+## 기존 본문 저장과 클라이언트 중계
+
+`write --vault <등록명> --path <상대경로.md> --expected-rev <revision> --stdin`은 UTF-8 본문을 stdin으로 받고 새 Document JSON을 반환한다. 원문 BOM과 단일 줄바꿈 형식을 유지한다. revision 불일치·미지원 인코딩·혼합 줄바꿈·경계 이탈·권한 오류는 실패이며 원본을 직접 잘라 쓰지 않는다. `--config-dir`은 마지막에 지정한다. 오류는 stderr와 종료 코드 1이다.
+
+`relay-prepare`는 클라이언트 OS data 아래 요청·초안 디렉터리를 만들고 `{directory,drafts}`를 반환한다. `relay --request <절대 JSON 경로>`는 그 요청 디렉터리의 로컬 파일을 읽는다. 요청은 `{binary,machine?,vault,path,expected_revision,text}`다. 로컬은 제품 write를 직접 실행하고 원격은 `hc exec --stdin --on <machine> -- <binary> write ...`의 stdin으로 본문을 전달한다. 본문을 argv에 넣지 않는다. 성공 시 Document를 반환하고 요청 파일을 제거하며 실패 시 요청을 보존한다. 이는 HTTP service/bridge가 아닌 제품 CLI의 로컬 중계다. 자세한 저장·초안 수명은 [편집 계약](editing.md)을 따른다.

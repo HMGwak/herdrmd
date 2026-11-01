@@ -344,7 +344,10 @@ test("closed readers ignore pending folder and document work", async () => {
 const readerSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/vault-view.js", import.meta.url), "utf8");
 const lifecycle = { pending: [], writes: [], released: 0, settingsClosed: 0, notifications: 0 };
 globalThis.__herdrmdReaderLifecycle = lifecycle;
+const editSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/edit-model.js", import.meta.url), "utf8");
 const readerPrelude = `
+import { EditModel } from "data:text/javascript;base64,${Buffer.from(editSource).toString("base64")}";
+class EditTransport { async load() { return null; } }
 import { ReaderModel, parentPath, fileTitle, documentStatus } from "data:text/javascript;base64,${Buffer.from(source).toString("base64")}";
 const state = globalThis.__herdrmdReaderLifecycle;
 const exec = async (binary, args, options) => {
@@ -355,6 +358,7 @@ const exec = async (binary, args, options) => {
 };
 const nextCommand = () => new Promise(() => {});
 const EditorState = { new() { return {
+  value() { return ""; }, on() {},
   set_value(value) { if (state.released) throw new Error("editor used after release"); state.writes.push(value); },
   release() { state.released += 1; },
 }; } };

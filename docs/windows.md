@@ -7,3 +7,5 @@
 `herdr-app check <appHome>/mods/herdrmd`와 `<appHome>/mods/herdrmd/herdrmd.exe --version`을 확인한다. 탭은 항상 VaultReader를 연다. binary·vault·machine은 선택한 호스트의 실제 값으로 명시하며 기존 개인/회사 launcher 설정을 보존한다. Windows 로컬은 로컬 경로, NAS는 NAS 실행 파일과 등록명을 사용한다. 사용자가 지정한 머신에서 제품 CLI를 호출하며 진단 서비스를 시작하거나 HTTP 토큰을 요구하지 않는다.
 
 제품에서 `serve`, `service`, `bridge` 명령은 제거됐다. 00 검증이 필요하면 별도 `herdrmd-diagnostics-windows`와 `herdrmd-probe`를 사용한다. [진단 설치](https://github.com/HMGwak/herdrmd/blob/main/docs/windows-bridge.md)는 제품 설치와 분리되어 있다. 두 패키지의 실행 파일을 서로 대신 쓰지 않는다.
+
+원문 편집·자동 저장은 NAS 실행 파일과 별개로 클라이언트 `mods/herdrmd/herdrmd.exe`도 최신 버전이어야 한다. 로컬 실행 파일은 사용자 data 아래 초안·요청 경로를 준비하고 본문을 stdin으로 중계한다. [편집·저장 계약](editing.md)을 따른다.

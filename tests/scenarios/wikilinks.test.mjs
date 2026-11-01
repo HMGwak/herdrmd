@@ -129,7 +129,7 @@ test("complete found actions accept only a matching, fully shaped prefetched rea
     assert.equal(action.document, document);
   }
   for (const document of [readDocument("Wrong.md"), readDocument("Target.md", "body", { revision: "" }),
-    readDocument("Target.md", "body", { bytes: -1 }), readDocument("Target.md", "body", { read_only: false }),
+    readDocument("Target.md", "body", { bytes: -1 }), readDocument("Target.md", "body", { read_only: "false" }),
     readDocument("Target.md", null, { encoding: "utf-8" }), { path: "Target.md", text: "incomplete shape" }]) {
     const action = await navigation.follow("Target", source, async () => ({ ...found("Target.md"), document }), same(source));
     assert.equal(action, null);
@@ -236,7 +236,10 @@ test("document switch, refresh generation, and close invalidate pending navigati
 const readerSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/vault-view.js", import.meta.url), "utf8");
 const integration = { exec: null };
 globalThis.__herdrmdWikiTest = integration;
+const checkboxSource = (await readFile(new URL("../../integrations/herdr/mods/herdrmd/checkboxes.js", import.meta.url), "utf8"))
+  .replace("from './wikilinks.js'", `from '${moduleUrl(source)}'`).replace("from './frontmatter.js'", `from '${moduleUrl(frontmatterSource)}'`);
 const readerPrelude = `
+import { renderCheckboxes, toggleCheckbox } from "${moduleUrl(checkboxSource)}";
 import { renderWikilinks } from "${moduleUrl(source)}";
 import { WikiNavigation } from "${moduleUrl(navigationSource)}";
 import { splitFrontmatter } from "${moduleUrl(frontmatterSource)}";
@@ -246,6 +249,9 @@ const exec = (...args) => state.exec(...args);
 `;
 const { VaultReader } = await import(moduleUrl(readerPrelude + readerSource.replace(/^import .*;\n/gm, "")));
 delete globalThis.__herdrmdWikiTest;
+// These navigation-only harnesses do not exercise native editor or local storage.
+VaultReader.prototype.edits = { states: new Map(), flush: async () => {}, attach: async document => ({ document, text: document.text }) };
+VaultReader.prototype.editorReadonly = true;
 
 const readerHarness = () => {
   const reader = Object.create(VaultReader.prototype), tasks = [], opened = [], external = [];
@@ -293,7 +299,7 @@ test("fragment feedback is present before the first spawned loading frame and su
   const targetDocument = { text: "# Heading\nSynthetic only", bytes: 24, encoding: "utf-8", line_endings: "lf", bom: false };
   const model = new ReaderModel(async (operation, path) => operation === "files" ? { entries: [], truncated: false } : path === "Source.md" ? sourceDocument : pending.promise);
   await model.open("Source.md");
-  Object.assign(reader, { model, closed: false, notice: "", editor: { set_value() {} }, wikiNavigation: new WikiNavigation() });
+  Object.assign(reader, { model, closed: false, notice: "", editor: { set_value() {}, value() { return ""; } }, wikiNavigation: new WikiNavigation() });
   const source = { path: model.selected, document: model.document, generation: model.readSequence };
   await reader.wikiNavigation.follow("folder/Target#Heading", source, async () => ({ status: "incomplete", matches: ["folder/Target.md"], fragment: "Heading", truncated: true }), (candidate) => reader.currentLinkSource(candidate));
   const cx = {
@@ -307,7 +313,7 @@ test("fragment feedback is present before the first spawned loading frame and su
   assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
   pending.resolve(targetDocument);
   await Promise.all(tasks);
-  assert.equal(model.document, targetDocument);
+  assert.deepEqual(model.document, targetDocument);
   assert.match(reader.notice, /위치 이동은 준비 중/);
   assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
   reader.open("Source.md", cx);
@@ -339,7 +345,7 @@ test("a created document replaces stale text and appears in expanded or previous
     model.documents.set(newEntry.path, { ...blankDocument, text: "stale deleted text" });
     Object.assign(reader, { model, options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
       previewMetadata: new WeakMap(), previewLinks: new WeakMap(), previewSequence: 0, wikiScope: "synthetic-create",
-      closed: false, notice: "", editor: { set_value() {} } });
+      closed: false, notice: "", editor: { set_value() {}, value() { return ""; } } });
     integration.exec = async (...args) => {
       execCalls.push(args); created = true;
       return { code: 0, stdout: JSON.stringify({ resolution: { ...found(newEntry.path), created: true }, document: blankDocument }) };
@@ -375,7 +381,7 @@ test("a normal prefetched follow uses one RPC, while null or omitted documents r
     requests.length = 0;
     Object.assign(reader, { model, options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
       previewMetadata: new WeakMap(), previewLinks: new WeakMap(), previewSequence: 0, wikiScope: "synthetic-prefetch",
-      closed: false, notice: "", editor: { set_value() {} } });
+      closed: false, notice: "", editor: { set_value() {}, value() { return ""; } } });
     integration.exec = async (...args) => {
       execCalls.push(args);
       const payload = { resolution: found(targetPath) };

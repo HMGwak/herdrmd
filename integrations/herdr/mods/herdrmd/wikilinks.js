@@ -8,7 +8,7 @@ const escapedLabel = (label) => Array.from(label, (character) => {
 const indentWidth = (text) => Array.from(text).reduce((width, character) => width + (character === "\t" ? 4 - width % 4 : 1), 0);
 const fence = (line) => /^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})(.*)$/.exec(line);
 
-function fencedSegments(text) {
+export function fencedSegments(text) {
   const lines = text.split(/(\r\n|\n|\r)/);
   const segments = [];
   let plain = "", code = "", marker = "", length = 0;

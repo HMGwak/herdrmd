@@ -40,6 +40,9 @@ pub fn read(vault: &Vault, relative: &str) -> Result<Document> {
     } // OPEN_REPARSE_POINT
     let file = options.open(&path)?;
     let meta = file.metadata()?;
+    if platform::has_multiple_links(&file)? {
+        return Err("hard-linked documents are not supported".into());
+    }
     if !meta.is_file() || platform::is_link(&meta) || meta.len() > MAX_BYTES {
         return Err("unsupported file type or document exceeds 1 MiB".into());
     }
@@ -79,6 +82,6 @@ pub fn read(vault: &Vault, relative: &str) -> Result<Document> {
         bom,
         line_endings,
         final_newline: source.ends_with(b"\n") || source.ends_with(b"\r"),
-        read_only: true,
+        read_only: text.is_none() || line_endings == "mixed",
     })
 }
