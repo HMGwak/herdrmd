@@ -5,10 +5,10 @@ import { ReaderModel, parentPath, fileTitle, documentStatus } from "./reader-mod
 import { VaultSettings } from "./vault-settings.js";
 import { splitFrontmatter } from "./frontmatter.js";
 import { frontmatterView } from "./frontmatter-view.js";
-import { renderWikilinks } from "./wikilinks.js";
+import { renderWikilinks, renderWikilinksSteps } from "./wikilinks.js";
 import { EditModel } from "./edit-model.js";
 import { EditTransport } from "./edit-transport.js";
-import { renderCheckboxes, toggleCheckbox } from "./checkboxes.js";
+import { renderCheckboxes, renderCheckboxesSteps, toggleCheckbox } from "./checkboxes.js";
 import { WikiNavigation } from "./wiki-navigation.js";
 
 // The same read contract runs locally or on an explicitly selected core.
@@ -196,6 +196,44 @@ export class VaultReader {
     return this.previewLinks.get(document);
   }
 
+  preparePreview(document, cx) {
+    if (!document || document.text === null || this.previewLinks.has(document)) return;
+    this.previewJobs ||= new WeakMap();
+    if (this.previewJobs.has(document)) return;
+    const job = { error: null };
+    this.previewJobs.set(document, job);
+    cx.spawn(async cx => {
+      const advance = async steps => {
+        for (;;) {
+          // Keep transformation out of the render callback and give the host a
+          // fresh execution budget between bounded parsing batches.
+          await cx.sleep(1);
+          if (this.closed || this.model.document !== document) return null;
+          const result = steps.next();
+          if (result.done) return result.value;
+        }
+      };
+      try {
+        await cx.sleep(1);
+        if (this.closed || this.model.document !== document) return;
+        const metadata = splitFrontmatter(document.text);
+        const scope = `${this.wikiScope}-${++this.previewSequence}`;
+        const checks = await advance(renderCheckboxesSteps(document.text, scope));
+        if (!checks) return;
+        const body = metadata ? splitFrontmatter(checks.markdown).body : checks.markdown;
+        const preview = await advance(renderWikilinksSteps(body, scope));
+        if (!preview) return;
+        this.previewMetadata.set(document, metadata);
+        this.previewLinks.set(document, { ...preview, checks: checks.byUrl });
+      } catch (error) {
+        job.error = String(error);
+      } finally {
+        if (!job.error) this.previewJobs.delete(document);
+        if (!this.closed) cx.notify();
+      }
+    });
+  }
+
   currentLinkSource(source) {
     return !this.closed && source.path === this.model.selected && source.document === this.model.document && source.generation === this.model.readSequence;
   }
@@ -340,8 +378,14 @@ export class VaultReader {
       .text_size(12).text_color(t.dim).child("파일을 선택하세요");
     else if (document.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
     else if (this.mode === "source") body = Editor.new(this.editor).flex_1().min_h(0);
-    else {
-      const preview = this.previewFor(document), metadata = this.previewMetadata.get(document);
+    else if (!this.previewLinks.has(document)) {
+      const error = this.previewJobs?.get(document)?.error;
+      body = v_flex().p(24).gap(8).child(div().text_size(13).child(error || "문서를 표시하는 중…"))
+        .when(Boolean(error), el => el.child(this.button("retry-preview", "다시 시도", cx => {
+          this.previewJobs.delete(document); this.preparePreview(document, cx); cx.notify();
+        }, t)));
+    } else {
+      const preview = this.previewLinks.get(document), metadata = this.previewMetadata.get(document);
       const sourcePath = m.selected;
       body = v_flex().flex_1().min_h(0).min_w(0).px(this.compact ? 18 : 32).py(22)
       .when(Boolean(metadata), el => el.child(frontmatterView(metadata, this.expandedProperties.has(m.selected), t, cx => this.toggleProperties(cx))))
@@ -378,6 +422,7 @@ export class VaultReader {
     const t = theme(), m = this.model;
     const showExplorer = !this.compact || this.explorerOpen;
     const showDocument = !this.compact || !this.explorerOpen;
+    if (showDocument && this.mode !== "source") this.preparePreview(m.document, cx);
     return v_flex().id("herdrmd-vault").on_key_down((event, cx) => {
       if (event.keystroke === "cmd-s" || event.keystroke === "ctrl-s") { cx.stop_propagation(); this.save(cx); }
     }).size_full().min_h(0).min_w(0).bg(t.surface).text_color(t.foreground)

@@ -239,8 +239,8 @@ globalThis.__herdrmdWikiTest = integration;
 const checkboxSource = (await readFile(new URL("../../integrations/herdr/mods/herdrmd/checkboxes.js", import.meta.url), "utf8"))
   .replace("from './wikilinks.js'", `from '${moduleUrl(source)}'`).replace("from './frontmatter.js'", `from '${moduleUrl(frontmatterSource)}'`);
 const readerPrelude = `
-import { renderCheckboxes, toggleCheckbox } from "${moduleUrl(checkboxSource)}";
-import { renderWikilinks } from "${moduleUrl(source)}";
+import { renderCheckboxes, renderCheckboxesSteps, toggleCheckbox } from "${moduleUrl(checkboxSource)}";
+import { renderWikilinks, renderWikilinksSteps } from "${moduleUrl(source)}";
 import { WikiNavigation } from "${moduleUrl(navigationSource)}";
 import { splitFrontmatter } from "${moduleUrl(frontmatterSource)}";
 import { parentPath } from "${moduleUrl(readerModelSource)}";
@@ -421,4 +421,44 @@ test("delayed link resolution uses the spawned context after the click context e
   assert.deepEqual(opened, ["Target.md"]);
   assert.doesNotMatch(reader.notice, /expired|context|TypeError/);
   assert.ok(notifications > 0);
+});
+
+
+test("long prose, long targets and many lines preserve all non-link text", () => {
+  const prose = "한글 prose and punctuation. ".repeat(40000);
+  const lines = "ordinary paragraph\r\n".repeat(20000);
+  const target = "긴 이름".repeat(10000);
+  const raw = prose + "[[Target]]\n" + lines + "[[" + target + "]]\n```md\n[[hidden]]\n```\n";
+  const preview = renderWikilinks(raw, "large");
+  assert.deepEqual(preview.links.map(link => link.target), ["Target", target]);
+  assert.equal(preview.markdown, prose + "[Target](herdrmd-wiki://resolve/large/1)\n" + lines
+    + "[" + target + "](herdrmd-wiki://resolve/large/2)\n```md\n[[hidden]]\n```\n");
+});
+
+test("preview preparation yields to the host and drops results after navigation", async () => {
+  for (const navigate of [false, true]) {
+    const { reader, document } = readerHarness(), tasks = [];
+    document.text = "paragraph\n".repeat(1000) + "- [ ] task\n[[Target]]";
+    let pauses = 0, notifications = 0;
+    const cx = {
+      spawn(fn) { tasks.push(fn(cx)); },
+      async sleep() { pauses++; if (navigate && pauses === 4) reader.model.document = {}; },
+      notify() { notifications++; },
+    };
+    reader.preparePreview(document, cx);
+    reader.preparePreview(document, cx);
+    assert.equal(tasks.length, 1);
+    assert.equal(reader.previewLinks.has(document), false);
+    await Promise.all(tasks);
+    assert.ok(pauses >= 4);
+    assert.equal(reader.previewLinks.has(document), !navigate);
+    assert.equal(reader.previewJobs.has(document), false);
+    assert.equal(notifications, 1);
+    if (!navigate) {
+      const preview = reader.previewLinks.get(document);
+      assert.equal(preview.links[0].target, "Target");
+      assert.equal(preview.checks.size, 1);
+      assert.equal(preview.markdown.startsWith("paragraph\n".repeat(1000)), true);
+    }
+  }
 });

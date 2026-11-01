@@ -1,20 +1,30 @@
-import { fencedSegments } from './wikilinks.js';
+import { fencedSegmentsSteps } from './wikilinks.js';
 import { splitFrontmatter } from './frontmatter.js';
 
 // Links exist only in the rendered copy. Offsets always refer to original UTF-16 text.
 export function renderCheckboxes(text, scope) {
+  const steps = renderCheckboxesSteps(text, scope);
+  let result; do { result = steps.next(); } while (!result.done);
+  return result.value;
+}
+export function* renderCheckboxesSteps(text, scope) {
   const metadata = splitFrontmatter(text), start = metadata ? text.length - metadata.body.length : 0;
+  yield;
   const excluded = [];
   const protectedRegions = /<!--[\s\S]*?(?:-->|$)|<(pre|code)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)|%%[\s\S]*?(?:%%|$)/gi;
   for (const match of text.matchAll(protectedRegions)) excluded.push([match.index, match.index + match[0].length]);
+  yield;
   // Markdown code spans may cross a line boundary before a task-shaped line.
   const runs = [...text.matchAll(/`+/g)], next = new Map(), latest = new Map();
+  yield;
   for (let index = runs.length - 1; index >= 0; index--) {
+    if (index % 128 === 0) yield;
     const length = runs[index][0].length;
     if (latest.has(length)) next.set(index, latest.get(length));
     latest.set(length, index);
   }
   for (let index = 0; index < runs.length; index++) {
+    if (index % 128 === 0) yield;
     if (!next.has(index)) continue;
     const closingIndex = next.get(index), closing = runs[closingIndex];
     excluded.push([runs[index].index, closing.index + closing[0].length]);
@@ -30,7 +40,9 @@ export function renderCheckboxes(text, scope) {
   let protectedIndex = 0;
   let offset = start, markdown = text.slice(0, start);
   const byUrl = new Map();
-  for (const segment of fencedSegments(text.slice(start))) {
+  const segments = yield* fencedSegmentsSteps(text.slice(start));
+  for (const segment of segments) {
+    yield;
     if (segment.code) markdown += segment.text;
     else markdown += segment.text.replace(/^([ \t]*(?:[-+*]|\d+[.)])[ \t]+)\[([ xX])\](?=[ \t]|$)/gm, (whole, prefix, status, index) => {
       const position = offset + index + prefix.length + 1;
