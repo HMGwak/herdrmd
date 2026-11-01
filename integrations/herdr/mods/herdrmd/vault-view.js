@@ -1,4 +1,4 @@
-import { div, image } from "gpui-kit";
+import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { exec, nextCommand, theme } from "herdr";
 import { ReaderModel, parentPath, fileTitle, documentStatus } from "./reader-model.js";
@@ -215,8 +215,11 @@ export class VaultReader {
         const expanded = entry.directory && m.expanded.has(entry.path);
         return h_flex().id(`vault-entry-${index}`).h(30).flex_none().pl(indent).pr(7).gap(7).items_center().rounded(5).cursor_pointer()
           .bg(m.selected === entry.path ? t.raised : t.chrome).hover((s) => s.bg(t.hover)).tooltip(entry.path)
+          .accessibility_label(`${entry.directory ? "폴더" : "Markdown 문서"}: ${entry.name}`)
           .on_click((_event, cx) => this.selectEntry(entry, cx))
-          .child(div().w(14).flex_none().text_size(12).text_color(entry.directory ? t.muted : t.dim).child(entry.directory ? (expanded ? "▾" : "▸") : "·"))
+          .child(div().w(10).flex_none().text_size(12).text_color(t.muted).child(entry.directory ? (expanded ? "▾" : "▸") : ""))
+          .child(svg(`mods/herdrmd/${entry.directory ? (expanded ? "folder-open" : "folder") : "file-text"}.svg`)
+            .size(16).flex_none().text_color(entry.directory ? t.muted : t.dim))
           .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === entry.path || expanded ? t.foreground : t.muted).child(entry.name));
       }
       const label = row.kind === "loading" ? "불러오는 중…" : row.kind === "empty" ? "Markdown 문서 없음" :

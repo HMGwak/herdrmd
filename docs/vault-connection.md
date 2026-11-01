@@ -110,3 +110,5 @@ complete not_found일 때만 생성한다. 조회 오류·권한 부족·incompl
 링크 속도 검토: NAS 내부의 명시 경로 follow는 약 1ms, bare 이름 검색은 약 25ms였다. 실제 Windows mod exec에서는 호출마다 약 93–106ms가 들고, 기존 흐름은 follow 뒤 read를 순서대로 요청했다. follow-read로 정상 단일 대상의 조회/본문 왕복을 한 번으로 줄인다. 트리 ancestor reveal은 별도 배경 작업이고, 큰 문서의 네이티브 Markdown 렌더 시간이나 네트워크 상황은 이 수치와 별개다. 외부 변경을 숨기는 장기 캐시나 경계 검사를 생략하는 최적화는 도입하지 않는다. 문서 이동/이름 변경의 링크 갱신은 [검토 문서](link-moves.md)를 따르며 아직 미구현이다.
 
 링크 속도 개선 검증(2026-11-01): 로컬 Rust 기본 검사·18개 Rust·53개 Node 테스트와 소스/Windows mod 검사를 통과했다. Windows hc→NAS 같은 조건 3쌍에서 기존 follow+read는 412/131/132ms, follow-read는 67/69/70ms였다. 첫 측정은 cold 값을 포함하며 전체 화면 렌더 시간이 아닌 RPC 처리 비교다. NAS reader와 Windows JS 세 파일을 해시 확인·백업 후 배포했고 정상 단일 링크의 추가 read가 0회임을 회귀 검증했다. 계측용 mod/tab은 정리했고 app status errors는 비어 있었다. GitHub CI는 실행하지 않았다.
+
+탐색기는 폴더에 접힘/펼침 화살표와 닫힌/열린 폴더 아이콘을, Markdown 파일에 문서 아이콘을 표시한다. 아이콘도 제품 mod의 모든 SVG와 함께 배포한다. 원문 보기는 아직 읽기 전용이며 기존 본문 편집·저장은 후속이다.

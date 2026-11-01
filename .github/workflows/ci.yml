@@ -51,7 +51,7 @@ jobs:
           Copy-Item target/debug/herdrmd.exe $mod
           Copy-Item integrations/herdr/mods/herdrmd/*.js $mod
           Copy-Item integrations/herdr/mods/herdrmd/mod.json $mod
-          Copy-Item integrations/herdr/mods/herdrmd/obsidian.svg $mod
+          Copy-Item integrations/herdr/mods/herdrmd/*.svg $mod
           foreach ($name in @('herdrmd-tabs', 'herdrmd-new-menu')) {
             $destination = Join-Path $bundle "mods/$name"
             New-Item -ItemType Directory -Force $destination | Out-Null
