@@ -143,7 +143,7 @@ export class VaultReader {
   open(path, cx, { notice = "", created = false, document = null } = {}) {
     this.wikiNavigation?.cancel();
     this.explorerOpen = false;
-    // Set navigation feedback before spawn can publish the first loading frame.
+    // Clear feedback from the previous operation when navigation starts.
     this.notice = notice;
     this.save(cx);
     // A recreated path may still have an older open-tab snapshot in memory.
@@ -272,9 +272,7 @@ export class VaultReader {
   openResolvedLink(action, cx) {
     if (!this.wikiNavigation?.current(action, (source) => this.currentLinkSource(source))) return;
     this.mode = "preview";
-    const notice = [action.fragment ? "제목·블록 위치 이동은 준비 중입니다." : "",
-      action.created ? "빈 문서를 만들었습니다." : action.fragment ? "문서만 열었습니다." : ""].filter(Boolean).join(" ");
-    this.open(action.path, cx, { notice, created: action.created === true, document: action.document });
+    this.open(action.path, cx, { created: action.created === true, document: action.document });
   }
 
   previewLink(url, document, path, cx) {
@@ -292,7 +290,7 @@ export class VaultReader {
 
   linkPanel(t) {
     const state = this.wikiNavigation?.state;
-    if (!state || !this.currentLinkSource(state.source)) return null;
+    if (!state || state.kind === "loading" || !this.currentLinkSource(state.source)) return null;
     return v_flex().id("wiki-link-status").flex_none().min_w(0).px(12).py(8).gap(6).border_b(1).border_color(t.border)
       .child(h_flex().min_w(0).gap(8)
         .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(state.message))
@@ -331,7 +329,7 @@ export class VaultReader {
   explorer(t) {
     const m = this.model, tree = m.tree();
     let entryIndex = 0;
-    const rows = tree.rows.map((row) => {
+    const rows = tree.rows.filter(row => row.kind !== "loading").map((row) => {
       const indent = 8 + Math.min(row.depth, 11) * 14;
       if (row.kind === "entry") {
         const entry = row.entry, index = entryIndex++;
@@ -345,14 +343,14 @@ export class VaultReader {
             .size(16).flex_none().text_color(entry.directory ? t.muted : t.dim))
           .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === entry.path || expanded ? t.foreground : t.muted).child(entry.name));
       }
-      const label = row.kind === "loading" ? "불러오는 중…" : row.kind === "empty" ? "Markdown 문서 없음" :
+      const label = row.kind === "empty" ? "Markdown 문서 없음" :
         row.kind === "error" ? row.message : row.cache ? "탐색기 항목 한도 · 다른 폴더를 접고 다시 불러오세요." : "이 폴더는 최대 1,000개 항목까지 표시합니다.";
       return v_flex().id(`vault-folder-${row.kind}-${row.path}`).flex_none().pl(indent + 21).pr(6).py(5).gap(5)
         .child(div().text_size(11).text_color(t.dim).child(label))
         .when(row.kind === "error" || (row.kind === "limit" && row.cache), (el) => el.child(this.button(`retry-folder-${row.path}`, "다시 불러오기",
           (cx) => this.action(cx, () => m.list(row.path, true)), t)));
     });
-    const summary = m.treeNotice || (tree.limited ? "표시 한도 1,500행 · 다른 폴더를 접어주세요." : `${entryIndex}개 항목${m.refreshing ? " · 새로고침 중…" : ""}`);
+    const summary = m.treeNotice || (tree.limited ? "표시 한도 1,500행 · 다른 폴더를 접어주세요." : `${entryIndex}개 항목`);
     return v_flex().id("vault-explorer").min_h(0).min_w(0).bg(t.chrome)
       .when(!this.compact, (el) => el.w(238).flex_none().border_r(1).border_color(t.border))
       .when(this.compact, (el) => el.flex_1())
@@ -368,30 +366,37 @@ export class VaultReader {
 
   }
 
+  displayedPreview() {
+    const m = this.model, document = m.document;
+    if (!m.selected) this.lastPreview = null;
+    else if (document && this.previewLinks.has(document)) this.lastPreview = { document, path: m.selected };
+    if (this.lastPreview && !m.tabs.includes(this.lastPreview.path)) this.lastPreview = null;
+    return this.lastPreview;
+  }
+
   documentPane(t) {
     const m = this.model, document = m.document;
+    const displayed = this.displayedPreview();
+    const error = document && this.previewJobs?.get(document)?.error;
     let body;
-    if (m.readLoading) body = div().p(28).text_size(13).text_color(t.muted).child("문서를 불러오는 중…");
-    else if (m.readError) body = v_flex().p(24).gap(12).child(div().text_size(13).child(m.readError))
+    if (m.readError) body = v_flex().p(24).gap(12).child(div().text_size(13).child(m.readError))
       .child(this.button("retry-document", "다시 읽기", (cx) => this.action(cx, () => m.open(m.selected, true)), t));
-    else if (!document) body = div().flex_1().flex().items_center().justify_center()
-      .text_size(12).text_color(t.dim).child("파일을 선택하세요");
-    else if (document.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
-    else if (this.mode === "source") body = Editor.new(this.editor).flex_1().min_h(0);
-    else if (!this.previewLinks.has(document)) {
-      const error = this.previewJobs?.get(document)?.error;
-      body = v_flex().p(24).gap(8).child(div().text_size(13).child(error || "문서를 표시하는 중…"))
-        .when(Boolean(error), el => el.child(this.button("retry-preview", "다시 시도", cx => {
-          this.previewJobs.delete(document); this.preparePreview(document, cx); cx.notify();
-        }, t)));
-    } else {
-      const preview = this.previewLinks.get(document), metadata = this.previewMetadata.get(document);
-      const sourcePath = m.selected;
+    else if (error) body = v_flex().p(24).gap(8).child(div().text_size(13).child(error))
+      .child(this.button("retry-preview", "다시 시도", cx => {
+        this.previewJobs.delete(document); this.preparePreview(document, cx); cx.notify();
+      }, t));
+    else if (document?.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
+    else if (this.mode === "source" && document) body = Editor.new(this.editor).flex_1().min_h(0);
+    else if (displayed) {
+      const { document: shown, path } = displayed;
+      const preview = this.previewLinks.get(shown), metadata = this.previewMetadata.get(shown);
       body = v_flex().flex_1().min_h(0).min_w(0).px(this.compact ? 18 : 32).py(22)
-      .when(Boolean(metadata), el => el.child(frontmatterView(metadata, this.expandedProperties.has(m.selected), t, cx => this.toggleProperties(cx))))
-      .child(TextView.markdown(`vault-preview-${m.selected}`, preview.markdown).selectable(true).scrollable(true).flex_1().min_h(0)
-        .on_link_click((url, cx) => this.previewLink(url, document, sourcePath, cx)));
-    }
+      .when(Boolean(metadata), el => el.child(frontmatterView(metadata, this.expandedProperties.has(path), t, cx => {
+        if (m.selected === path && m.document === shown) this.toggleProperties(cx);
+      })))
+      .child(TextView.markdown(`vault-preview-${path}`, preview.markdown).selectable(true).scrollable(true).flex_1().min_h(0)
+        .on_link_click((url, cx) => this.previewLink(url, shown, path, cx)));
+    } else body = div().flex_1().min_h(0);
     const linkPanel = this.linkPanel(t);
     return v_flex().flex_1().min_w(0).min_h(0)
       .when(Boolean(m.tabs.length) || this.compact, el => el.child(h_flex().h(36).flex_none().min_w(0).items_center().gap(4).pr(6).bg(t.chrome).border_b(1).border_color(t.border)

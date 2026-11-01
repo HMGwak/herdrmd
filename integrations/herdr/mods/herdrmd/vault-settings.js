@@ -53,7 +53,7 @@ export class VaultSettings {
             .child(div().text_size(12).text_color(t.muted).child(this.label))))
         .child(v_flex().max_w(720).w_full().gap(16)
           .child(field("연결된 컴퓨터", this.options.machine || "이 컴퓨터"))
-          .child(field("Markdown 폴더", this.path || (this.error ? "경로를 확인하지 못했습니다." : "폴더 경로를 확인하는 중…")))
+          .child(field("Markdown 폴더", this.path || ""))
           .when(Boolean(this.error), el => el.child(div().text_size(12).text_color(t.blocked).child(this.error)))
         ));
   }

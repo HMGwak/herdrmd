@@ -273,7 +273,7 @@ test("reader follows a link with exact from/target arguments on the configured N
   await Promise.all(tasks);
   assert.deepEqual(calls, [["/opt/herdrmd", ["follow-read", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
   assert.deepEqual(opened, ["notes/Target.md"]);
-  assert.match(reader.notice, /제목·블록/);
+  assert.equal(reader.notice, "");
   assert.equal(document.text, raw);
   assert.equal(reader.previewFor(document).links.length, 1);
 });
@@ -293,7 +293,7 @@ test("native preview callbacks resolve only table links; HTTP and stale callback
 });
 
 
-test("fragment feedback is present before the first spawned loading frame and survives document completion", async () => {
+test("navigation does not publish transitional or completion descriptions", async () => {
   const reader = Object.create(VaultReader.prototype), pending = deferred(), tasks = [], frames = [];
   const sourceDocument = { text: "[[folder/Target#Heading]]", bytes: 26, encoding: "utf-8", line_endings: "lf", bom: false };
   const targetDocument = { text: "# Heading\nSynthetic only", bytes: 24, encoding: "utf-8", line_endings: "lf", bom: false };
@@ -310,12 +310,12 @@ test("fragment feedback is present before the first spawned loading frame and su
   reader.chooseLink(0, cx);
   assert.equal(model.selected, "folder/Target.md");
   assert.ok(frames.length > 0);
-  assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
+  assert.ok(frames.every((frame) => frame.notice === ""));
   pending.resolve(targetDocument);
   await Promise.all(tasks);
   assert.deepEqual(model.document, targetDocument);
-  assert.match(reader.notice, /위치 이동은 준비 중/);
-  assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
+  assert.equal(reader.notice, "");
+  assert.ok(frames.every((frame) => frame.notice === ""));
   reader.open("Source.md", cx);
   assert.equal(reader.notice, "");
   await Promise.all(tasks);
@@ -361,7 +361,7 @@ test("a created document replaces stale text and appears in expanded or previous
     assert.deepEqual(readCalls, [sourceEntry.path]);
     assert.deepEqual(listCalls, ["", "folder", "", "folder"]);
     assert.ok(model.visibleEntries.some((entry) => entry.path === newEntry.path));
-    assert.match(reader.notice, /빈 문서.*만들었습니다/);
+    assert.equal(reader.notice, "");
   }
 });
 
@@ -461,4 +461,35 @@ test("preview preparation yields to the host and drops results after navigation"
       assert.equal(preview.markdown.startsWith("paragraph\n".repeat(1000)), true);
     }
   }
+});
+
+
+test("preview stays visible until the destination is ready and clears when tabs close", () => {
+  const { reader, document } = readerHarness();
+  reader.model.tabs = [reader.model.selected, "Target.md"];
+  reader.previewFor(document);
+  assert.equal(reader.displayedPreview().document, document);
+  reader.model.selected = "Target.md";
+  reader.model.document = undefined;
+  assert.equal(reader.displayedPreview().document, document);
+  const target = { text: "new document" };
+  reader.model.document = target;
+  assert.equal(reader.displayedPreview().document, document);
+  reader.previewFor(target);
+  assert.equal(reader.displayedPreview().document, target);
+  assert.equal(reader.displayedPreview().path, "Target.md");
+  reader.model.selected = "";
+  reader.model.tabs = [];
+  assert.equal(reader.displayedPreview(), null);
+});
+
+test("pending link lookup has no visible status panel", async () => {
+  const { reader, document } = readerHarness(), pending = deferred();
+  reader.wikiNavigation = new WikiNavigation();
+  const source = { path: reader.model.selected, document, generation: reader.model.readSequence };
+  const task = reader.wikiNavigation.follow("Target", source, () => pending.promise, candidate => reader.currentLinkSource(candidate));
+  assert.equal(reader.wikiNavigation.state.message, "");
+  assert.equal(reader.linkPanel({}), null);
+  pending.resolve(found("Target.md"));
+  await task;
 });

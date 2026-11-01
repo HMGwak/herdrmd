@@ -12,7 +12,7 @@ export class WikiNavigation {
     if (this.closed || !isCurrent(source)) return null;
     const sequence = ++this.sequence;
     const action = { sequence, source, fragment: null, created: false };
-    this.state = { ...action, kind: "loading", target, message: `‘${target}’ 링크를 여는 중…` };
+    this.state = { ...action, kind: "loading", target, message: "" };
     try {
       const result = await request(source.path, target);
       if (!this.current(action, isCurrent)) {
