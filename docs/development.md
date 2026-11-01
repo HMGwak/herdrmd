@@ -17,4 +17,4 @@ CI는 당분간 workflow_dispatch 수동 실행만 사용한다. push/PR마다 �
 
 합성 fixture는 추후 `tests/fixtures/`에 두고 줄바꿈·BOM·지원하지 않는 인코딩 바이트를 그대로 추적한다. `.gitattributes`가 이 경로의 자동 줄바꿈 변환을 제외한다. 실제 개인 Vault를 테스트 자료로 복사하지 않는다. 설치 파일은 `dist/`·`artifacts/`, 머신별 상태는 OS 사용자 경로에 두며 Git에서 제외한다.
 
-00 Herdr 연결 검증은 [bridge-verification.md](bridge-verification.md)를 따른다. HTTP GET/POST, 인증 헤더, 한글 왕복, 분리 실행 생존과 탭 수명을 실제 Herdr에서 확인한 후 코어를 확장한다. 개발 검증용 mod만 설치하며 개인 Vault에는 접근하지 않는다.
+00 Herdr 연결 검증은 [bridge-verification.md](bridge-verification.md)를 따른다. HTTP GET/POST, 인증 헤더, 한글 왕복, 분리 실행 생존과 탭 수명을 실제 Herdr에서 확인한 후 코어를 확장한다. 00 probe 검증에는 합성 입력·전용 임시 상태만 사용한다. 제품 reader의 Vault 연결은 별도 기능이며, 쓰기 검증은 합성 임시 Vault에서 수행한다.

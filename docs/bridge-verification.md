@@ -18,7 +18,7 @@ target/debug/herdrmd service stop --state-dir /absolute/private/scratch/herdrmd-
 
 ## Herdr mod
 
-소스 `integrations/herdr/mods/herdrmd/`의 `main.js`, `api.js`, `mod.json`을 Herdr 설정 폴더의 `mods/herdrmd/`로 복사한다. 기존 동일 이름 mod가 있으면 내용을 확인한 뒤 설치한다. `place: none`이므로 기존 레이아웃·키 설정은 바꾸지 않는다.
+소스 `integrations/herdr/mods/herdrmd/`의 모든 `*.js`, `mod.json`, `obsidian.svg`를 Herdr 설정 폴더의 `mods/herdrmd/`로 복사한다. 현재 main.js가 reader도 정적으로 import하므로 00 probe만 실행하더라도 보조 JS 파일이 필요하다. 기존 동일 이름 mod가 있으면 내용을 확인·백업한 뒤 전용 파일만 갱신하고 사용자 `launcher.json`은 보존한다. `place: none`이므로 기존 레이아웃·키 설정은 바꾸지 않는다.
 
 ```sh
 herdr-app check /absolute/path/to/integrations/herdr/mods/herdrmd
@@ -27,9 +27,9 @@ herdr-app do tab.new '{"name":"herdrmd · 00 bridge","space":"<existing space ID
 
 macOS mod는 Herdr의 `exec`로 ensure를 실행한다. Windows mod는 로컬 core의 `hc run --bg --no-parent --no-notify --rm`으로 `serve`를 직접 시작하고 `service wait`로 최대 5초 준비를 확인한다. 정상 인스턴스가 있으면 재사용한다. 이후 연결 파일을 읽고 인증 GET, 무인증 401, 한글 POST echo를 검증한다. 토큰은 화면·명령 인수·일반 로그에 표시하지 않는다. 성공 화면에 PID와 UTF-8 바이트 수를 표시한다.
 
-mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 현재 exec에는 원격 대상이 없고 HTTP는 그 클라이언트의 loopback을 사용한다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
+mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 00 probe의 exec에는 원격 대상을 지정하지 않으며 HTTP는 그 클라이언트의 loopback을 사용한다. 제품 reader의 원격 호출은 이 실험과 별개다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
 
-Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성공한 push CI는 실행 파일·JS·설치 안내가 포함된 `herdrmd-bridge-windows` artifact를 제공한다. 다른 OS의 절대 경로가 탭 props에 공유되면 mod는 현재 클라이언트의 mod 폴더 안 실행 파일을 선택하고, `bridge location`으로 OS 임시 상태 경로를 조회한다. 사용자 설정·Vault에 토큰을 복사하지 않는다.
+Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성공한 수동 CI(workflow_dispatch)는 실행 파일·JS·설치 안내가 포함된 `herdrmd-bridge-windows` artifact를 제공한다. push/PR로 CI를 자동 실행하지 않는다. 다른 OS의 절대 경로가 탭 props에 공유되면 mod는 현재 클라이언트의 mod 폴더 안 실행 파일을 선택하고, `bridge location`으로 OS 임시 상태 경로를 조회한다. 사용자 설정·Vault에 토큰을 복사하지 않는다.
 
 실제 입력·링크·탭 검증 순서는 다음과 같다.
 

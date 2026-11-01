@@ -1,6 +1,6 @@
 # + 메뉴에서 Obsidian 볼트 열기
 
-설치한 사용자 탭 바의 `+`를 누르고 **Obsidian 볼트 열기**를 선택하면 설정한 호스트의 Vault를 새 읽기 전용 탭으로 연다. 닫은 탭·Space나 에이전트에 의존하지 않고 다시 열 수 있다. 대상이 하나면 바로 열고, 여러 개면 개인·회사 등의 이름을 선택하는 목록을 표시한다. 메뉴와 reader 탭은 Obsidian 아이콘을 쓴다. Terminal·에이전트·New space·worktree 항목은 유지한다.
+설치한 사용자 탭 바의 `+`를 누르고 **Obsidian 볼트 열기**를 선택하면 설정한 호스트의 Vault를 새 reader 탭으로 연다. 본문은 읽기 전용이며 없는 위키링크 대상의 빈 문서 생성은 지원한다. 닫은 탭·Space나 에이전트에 의존하지 않고 다시 열 수 있다. 대상이 하나면 바로 열고, 여러 개면 개인·회사 등의 이름을 선택하는 목록을 표시한다. 메뉴와 reader 탭은 Obsidian 아이콘을 쓴다. Terminal·에이전트·New space·worktree 항목은 유지한다.
 
 등록한 대상 목록을 선택하는 간단한 진입점이다. reader 안의 볼트 설정에서 현재 컴퓨터와 실제 폴더 경로를 확인할 수 있다. 직접 경로 선택은 준비 중이며 등록 UI와 NAS 자동 탐지는 아직 없다. NAS는 현재 데스크톱 core에서 직접 연결한 머신으로 사용한다. Mac을 중계 호스트로 요구하지 않는다.
 
@@ -45,9 +45,9 @@ machine은 이 클라이언트 core에 등록한 호스트 별칭이다. 생략�
 2. CI의 `herdrmd-reader-linux-x64`는 x86_64 Linux용 정적 musl 실행 파일이다. NAS 사용자 실행 경로에 설치하고 체크섬과 `herdrmd --version`을 확인한다. 다른 CPU용 빌드는 별도로 준비해야 한다.
 3. **NAS에서** `herdrmd vault add personal <개인 볼트 절대 경로>`와 `herdrmd vault add work <회사 볼트 절대 경로>`를 실행한다. 등록 정보는 NAS 사용자 설정 디렉터리에 저장하며 실제 볼트 안에는 쓰지 않는다.
 4. 데스크톱의 launcher.json에 두 등록명과 NAS 실행 경로·머신 별칭을 넣는다. `machine`은 현재 Space와 무관하게 명시한 NAS를 사용한다. 이 목록은 볼트 접근 권한을 분리하는 보안 경계는 아니다. 접근 권한은 NAS SSH 사용자 권한을 따른다.
-5. 기존 Obsidian Headless Sync는 별도로 상태를 확인한다. `ob sync-list-local`, `ob sync-status --path <컨테이너 안 볼트 경로>`와 각 볼트의 `ob sync --continuous` 프로세스를 확인한다. 정상 동작 중이면 그대로 유지한다. herdrmd는 Sync 로그인·설정·동기화 프로세스를 관리하지 않으며, NAS에 내려온 파일을 읽는다. reader의 새로고침으로 이후 변경을 다시 조회한다.
+5. 기존 Obsidian Headless Sync는 별도로 상태를 확인한다. `ob sync-list-local`, `ob sync-status --path <컨테이너 안 볼트 경로>`와 각 볼트의 `ob sync --continuous` 프로세스를 확인한다. 정상 동작 중이면 그대로 유지한다. herdrmd는 Sync 로그인·설정·동기화 프로세스를 관리하지 않으며, NAS에 내려온 파일을 읽고, 없는 위키 대상의 생성은 같은 NAS의 코어에서 처리한다. reader의 새로고침으로 이후 변경을 다시 조회한다.
 
-저장·검색·위키링크는 아직 제공하지 않는다. 기존 Sync가 파일을 바꿀 수 있으므로 목록과 읽기 시점 사이의 변경은 가능하다. 원문 내용은 설정·패키지·테스트 fixture로 복제하지 않는다.
+위키링크 이동과 없는 대상의 빈 Markdown 생성은 제공한다. 본문 편집·기존 문서 저장·검색은 아직 제공하지 않는다. 생성 위치와 경계는 [Vault 연결](vault-connection.md)을 따른다. 기존 Sync가 파일을 바꿀 수 있으므로 목록과 읽기 시점 사이의 변경은 가능하다. 원문 내용은 설정·패키지·테스트 fixture로 복제하지 않는다.
 
 ## 아이콘 출처
 
