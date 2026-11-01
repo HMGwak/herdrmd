@@ -1,4 +1,4 @@
-import { div, image, svg } from "gpui-kit";
+import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { exec, nextCommand, theme } from "herdr";
 import { ReaderModel, parentPath, fileTitle, documentStatus } from "./reader-model.js";
@@ -282,6 +282,14 @@ export class VaultReader {
       .accessibility_label(label).child(label).on_click((_event, cx) => action(cx));
   }
 
+  iconButton(id, label, icon, action, t) {
+    return div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(4)
+      .cursor_pointer().text_color(t.muted).hover(el => el.bg(t.hover).text_color(t.foreground))
+      .tooltip(label).accessibility_label(label)
+      .child(svg(`mods/herdrmd/${icon}.svg`).size(16))
+      .on_click((_event, cx) => action(cx));
+  }
+
   explorer(t) {
     const m = this.model, tree = m.tree();
     let entryIndex = 0;
@@ -310,12 +318,16 @@ export class VaultReader {
     return v_flex().id("vault-explorer").min_h(0).min_w(0).bg(t.chrome)
       .when(!this.compact, (el) => el.w(238).flex_none().border_r(1).border_color(t.border))
       .when(this.compact, (el) => el.flex_1())
-      .child(h_flex().h(42).flex_none().items_center().px(9).gap(4).border_b(1).border_color(t.border)
-        .child(div().flex_1().text_size(11).font_semibold().text_color(t.muted).child("파일 탐색기"))
-        .child(this.button("collapse-folders", "모두 접기", (cx) => { m.collapseAll(); cx.notify(); }, t)))
-      .child(div().px(12).py(9).flex_none().text_size(11).text_color(t.dim).truncate().tooltip(this.label).child(`${this.vault} /`))
-      .child(v_flex().id("vault-entries").flex_1().min_h(0).overflow_y_scrollbar().px(6).gap(2).children(rows))
-      .child(div().px(12).py(8).flex_none().border_t(1).border_color(t.border).text_size(11).text_color(t.dim).child(summary));
+      .child(h_flex().h(36).flex_none().items_center().px(8).gap(4).border_b(1).border_color(t.border)
+        .child(div().flex_1().text_size(11).text_color(t.muted).child("파일"))
+        .child(this.iconButton("refresh-vault", "새로고침", "refresh", cx => this.refresh(cx), t))
+        .child(this.button("collapse-folders", "접기", cx => { m.collapseAll(); cx.notify(); }, t))
+        .when(this.compact && Boolean(m.selected), el => el.child(this.button("show-document", "문서", cx => { this.explorerOpen = false; cx.notify(); }, t))))
+      .child(v_flex().id("vault-entries").flex_1().min_h(0).overflow_y_scrollbar().px(6).py(4).gap(2).children(rows))
+      .child(h_flex().h(36).flex_none().px(6).gap(6).items_center().border_t(1).border_color(t.border)
+        .child(this.iconButton("vault-settings", "설정", "settings", cx => { this.settingsOpen = true; cx.notify(); }, t))
+        .child(div().flex_1().min_w(0).truncate().text_size(10).text_color(t.dim).tooltip(summary).child(summary)));
+
   }
 
   documentPane(t) {
@@ -324,11 +336,8 @@ export class VaultReader {
     if (m.readLoading) body = div().p(28).text_size(13).text_color(t.muted).child("문서를 불러오는 중…");
     else if (m.readError) body = v_flex().p(24).gap(12).child(div().text_size(13).child(m.readError))
       .child(this.button("retry-document", "다시 읽기", (cx) => this.action(cx, () => m.open(m.selected, true)), t));
-    else if (!document) body = v_flex().flex_1().items_center().justify_center().gap(12).p(24)
-      .child(image("mods/herdrmd/obsidian.svg").size(36))
-      .child(div().text_size(19).font_semibold().child("문서를 열어보세요"))
-      .child(div().text_size(12).text_color(t.muted).child("파일 탐색기에서 Markdown 문서를 선택하세요."))
-      .when(this.compact, (el) => el.child(this.button("empty-browse", "파일 탐색기 열기", (cx) => { this.explorerOpen = true; cx.notify(); }, t)));
+    else if (!document) body = div().flex_1().flex().items_center().justify_center()
+      .text_size(12).text_color(t.dim).child("파일을 선택하세요");
     else if (document.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
     else if (this.mode === "source") body = Editor.new(this.editor).flex_1().min_h(0);
     else {
@@ -341,21 +350,21 @@ export class VaultReader {
     }
     const linkPanel = this.linkPanel(t);
     return v_flex().flex_1().min_w(0).min_h(0)
-      .child(h_flex().id("vault-document-tabs").h(36).flex_none().min_w(0).overflow_x_scroll().bg(t.chrome).border_b(1).border_color(t.border)
-        .when(!m.tabs.length, (el) => el.child(div().px(14).py(9).text_size(12).text_color(t.dim).child("열린 문서 없음")))
-        .children(m.tabs.map((path, index) => h_flex().id(`document-tab-${index}`).h(36).max_w(230).min_w(90).flex_none().items_center().gap(8).pl(12).pr(5)
-          .bg(m.selected === path ? t.surface : t.chrome).border_r(1).border_color(t.border).cursor_pointer().tooltip(path)
-          .on_click((_event, cx) => this.open(path, cx))
-          .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === path ? t.foreground : t.muted).child(fileTitle(path)))
-          .child(div().id(`close-document-${index}`).size(22).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .tooltip("문서 닫기").accessibility_label(`${fileTitle(path)} 닫기`).child("×").on_click((_event, cx) => {
-              cx.stop_propagation(); this.save(cx, path); this.action(cx, () => m.closeTab(path));
-            })))))
-      .child(h_flex().h(42).flex_none().min_w(0).px(12).gap(5).items_center().border_b(1).border_color(t.border)
-        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).tooltip(m.selected || this.label).child(m.selected || this.label))
-        .when(Boolean(document && !document.read_only), el => el.child(this.button("save-document", "저장", cx => this.save(cx), t)))
-        .child(this.button("preview-mode", "읽기", (cx) => { this.save(cx); this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
-        .child(this.button("source-mode", document?.read_only ? "원문" : "편집", (cx) => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))
+      .when(Boolean(m.tabs.length) || this.compact, el => el.child(h_flex().h(36).flex_none().min_w(0).items_center().gap(4).pr(6).bg(t.chrome).border_b(1).border_color(t.border)
+        .when(this.compact, el => el.child(this.iconButton("toggle-explorer", "파일 탐색기", "folder", cx => { this.explorerOpen = true; cx.notify(); }, t)))
+        .child(h_flex().id("vault-document-tabs").flex_1().min_w(0).h(36).overflow_x_scroll()
+          .children(m.tabs.map((path, index) => h_flex().id(`document-tab-${index}`).h(36).max_w(230).min_w(90).flex_none().items_center().gap(8).pl(12).pr(5)
+            .bg(m.selected === path ? t.surface : t.chrome).border_r(1).border_color(t.border).cursor_pointer().tooltip(path)
+            .on_click((_event, cx) => this.open(path, cx))
+            .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === path ? t.foreground : t.muted).child(fileTitle(path)))
+            .child(div().id(`close-document-${index}`).size(22).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+              .tooltip("문서 닫기").accessibility_label(`${fileTitle(path)} 닫기`).child("×").on_click((_event, cx) => {
+                cx.stop_propagation(); this.save(cx, path); this.action(cx, () => m.closeTab(path));
+              })))))
+        .when(Boolean(document), el => el
+          .when(!document.read_only, el => el.child(this.button("save-document", "저장", cx => this.save(cx), t)))
+          .child(this.button("preview-mode", "읽기", cx => { this.save(cx); this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
+          .child(this.button("source-mode", document.read_only ? "원문" : "편집", cx => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))))
       .when(Boolean(this.edits.states.get(m.selected)?.error), el => el.child(v_flex().px(12).py(8).gap(5)
         .child(div().text_size(12).child(this.edits.states.get(m.selected)?.error || ""))
         .child(h_flex().gap(8).child(this.button("retry-save", "재시도", cx => this.save(cx), t))
@@ -376,20 +385,14 @@ export class VaultReader {
         const compact = width < 620;
         if (compact !== this.compact) { this.compact = compact; cx.notify(); }
       })
-      .child(h_flex().h(48).flex_none().min_w(0).px(12).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(image("mods/herdrmd/obsidian.svg").size(21).flex_none())
-        .child(div().flex_1().min_w(0).truncate().font_semibold().text_size(13).tooltip(this.label).child(this.label))
-        .when(this.compact, (el) => el.child(this.button("toggle-explorer", this.explorerOpen ? "문서" : "탐색기", (cx) => { this.explorerOpen = !this.explorerOpen; cx.notify(); }, t)))
-        .child(this.button("refresh-vault", "새로고침", (cx) => this.refresh(cx), t))
-        .child(this.button("vault-settings", "설정", (cx) => { this.settingsOpen = true; cx.notify(); }, t)))
       // h_flex centers children by default. Stretch the two full-height panes so
       // their inner flex scroll regions receive the actual available height.
       .child(h_flex().flex_1().min_h(0).min_w(0).items_stretch()
         .when(showExplorer, (el) => el.child(this.explorer(t)))
         .when(showDocument, (el) => el.child(this.documentPane(t))))
-      .child(h_flex().h(28).flex_none().px(12).gap(10).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim)
+      .when(Boolean(m.document || this.notice), el => el.child(h_flex().h(22).flex_none().px(12).gap(10).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim)
         .child(div().flex_none().child(m.document?.read_only ? "읽기 전용" : (this.edits.states.get(m.selected)?.status || "읽기")))
-        .child(div().flex_1().min_w(0).truncate().tooltip(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))
-          .child(this.notice || (m.document ? documentStatus(m.document) : "표준 Markdown 미리보기 · 원문 보기 지원"))));
+        .child(div().flex_1().min_w(0).truncate().tooltip(this.notice || (m.document ? documentStatus(m.document) : ""))
+          .child(this.notice || (m.document ? documentStatus(m.document) : "")))));
   }
 }
