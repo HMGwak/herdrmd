@@ -51,7 +51,7 @@ macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아
 
 ## 검증 결과
 
-검증 환경: Rust 1.94.0, macOS의 Herdr 0.1.10 / herdr-core 0.1.15. 실행은 사용자가 열어둔 Terra 6.1 medium 세션에 의뢰하고 기존 AGY 세션에서 읽기 전용 검토를 받았다.
+검증 환경: Rust 1.94.0, macOS의 Herdr 0.1.10 / herdr-core 0.1.15, Windows의 Herdr 0.1.11 / herdr-core 0.1.16. 초기 실행은 사용자가 열어둔 Terra 6.1 medium 세션에 의뢰하고 기존 AGY 세션에서 읽기 전용 검토를 받았다. 이후 Terra가 종료돼 Windows dev worker가 설치하고 lead가 별도로 CI·파일 해시·서비스와 실제 Windows 화면을 검증했다.
 
 | 항목 | 결과 |
 | --- | --- |
@@ -63,11 +63,15 @@ macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아
 | 탭 전환·복귀 | 같은 입력·카운터 유지, closed 이벤트 없음 |
 | 검증 탭 종료 콜백 | Terra가 만든 별도 탭의 initialized → closed 확인. 기존 탭은 closed 없이 유지되고 동일 서비스 PID 생존 |
 | 직접 한글 입력·IME와 실제 링크 클릭 | 사용자 확인 대기 |
-| macOS·Windows CI | [81e74d7의 실행](https://github.com/HMGwak/herdrmd/actions/runs/41281827654)에서 양쪽 성공. 각각 프로세스 테스트 3개 통과 |
-| 실제 Windows Herdr UI·10분 idle 종료 | 미검증 |
+| macOS·Windows CI | [ceaf71f의 실행](https://github.com/HMGwak/herdrmd/actions/runs/41284389150)에서 양쪽 성공. 각각 프로세스 테스트 4개 통과 |
+| 실제 Windows Herdr UI | 로컬 dev Space의 전용 mod 탭에서 PASS · GET + POST + auth 표시. 서버의 initialized·auth_rejection_observed·echo 및 후속 exec에서 동일 PID 생존 확인 |
+| Windows 설치 산출물 | 설치된 EXE·JS·mod.json의 SHA256이 성공한 CI artifact와 모두 일치 |
+| 10분 idle 종료 | 실제 대기 미검증 |
 
 실행 중인 mod에서는 init의 첫 인수로 props를 받지 못하는 현상을 확인해 `herdr.props()`로 읽는다. 초기 check 성공만으로 비동기 초기화 성공을 판단하지 않는다. 이 실험에서 사용한 UI와 콜백은 제품 편집기나 복구 보장이 아니다.
 
 초기 Windows CI에서는 프로세스 테스트가 2분 제한에 걸렸다. Windows launcher를 `CreateProcessW`의 `bInheritHandles=FALSE`로 바꾸고 프로세스·스레드 HANDLE의 소유권을 관리한다. 상속 가능한 출력 HANDLE을 전달하는 Windows 회귀 검사와 한글·공백 상태 경로 검증을 포함해 재검증했다. 단순 빌드 성공을 Windows 실행 검증으로 보고하지 않는다.
 
 실제 Windows herdr-core 0.1.16의 `exec`는 kill-on-close Job Object (`0x2000`, breakaway 비허용) 안에서 실행되어 `ensure`의 detached 자식도 명령 반환 시 종료됐다. CI에서 HANDLE 상속 회귀가 통과해도 이 호스트 제약은 재현되지 않았다. core가 `serve`를 직접 소유하는 실행으로 바꾼 독립 실험에서는 별도 exec에서도 같은 PID가 생존하고 재사용·무인증 401·한글/emoji/CRLF echo(74 UTF-8 bytes)·정상 종료·임시 자료 정리가 통과했다. 이 실험은 실제 Windows mod 화면·물리 입력 검증과 구분한다.
+
+[ceaf71f의 Windows 검증 패키지](https://github.com/HMGwak/herdrmd/actions/runs/41284389150/artifacts/13074169861)를 실제 Windows에 설치한 뒤 lead가 화면과 서버 보고서를 별도로 확인했다. 기존 검증 탭은 양쪽 앱 목록에서 사라져 Windows 로컬 dev Space에 `herdrmd Windows 00 bridge` 탭을 새로 만들었다. 초기 화면은 97 UTF-8 bytes 왕복과 native changes 0 / link clicks 0을 표시했다. 실제 입력·IME·링크 클릭은 이 초기 통신 성공에 포함하지 않는다.

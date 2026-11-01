@@ -12,7 +12,7 @@ cargo test --workspace --locked
 
 인수 없는 실행은 도움말이다. 현재 통합 테스트는 임시 상태 폴더에서 인증·한글 echo·분리 실행·동시 ensure·종료를 검증한다. Vault 경계, 저장 실패와 복구는 후속 태스크에서 추가한다. 새 의존성을 도입할 때 호환 버전을 검증하고 `Cargo.lock`을 갱신·커밋한다. `pulldown-cmark`, `notify`, BLAKE3는 기능 태스크에서 도입할 예정이다. 연결 spike의 인스턴스 잠금은 고정 Rust 버전에서 제공하는 표준 File 잠금을 사용한다.
 
-CI는 macOS·Windows에서 고정한 Rust로 포맷, check, build, test를 수행한다. 초기에는 캐시·설치·릴리스 작업을 추가하지 않는다. CI 결과와 실제 Windows Herdr 화면 검증은 별도로 기록한다.
+CI는 macOS·Windows에서 고정한 Rust로 포맷, check, build, test를 수행한다. 성공한 push는 Windows 연결 검증용 EXE·mod·안내 artifact도 제공한다. 제품 설치·릴리스 작업은 후속 범위다. CI 결과와 실제 Windows Herdr 화면 검증은 별도로 기록한다.
 
 합성 fixture는 추후 `tests/fixtures/`에 두고 줄바꿈·BOM·지원하지 않는 인코딩 바이트를 그대로 추적한다. `.gitattributes`가 이 경로의 자동 줄바꿈 변환을 제외한다. 실제 개인 Vault를 테스트 자료로 복사하지 않는다. 설치 파일은 `dist/`·`artifacts/`, 머신별 상태는 OS 사용자 경로에 두며 Git에서 제외한다.
 
