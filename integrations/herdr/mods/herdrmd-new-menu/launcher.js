@@ -32,3 +32,12 @@ export function launchArguments(target, space) {
     },
   };
 }
+
+export function parseTargets(text) {
+  const settings = JSON.parse(text);
+  const values = Array.isArray(settings?.targets) ? settings.targets : [settings];
+  if (values.length === 0 || values.length > 20) throw new Error("expected 1 to 20 Vaults");
+  const targets = values.map(value => parseTarget(JSON.stringify(value)));
+  if (new Set(targets.map(target => target.name)).size !== targets.length) throw new Error("duplicate Vault label");
+  return targets;
+}

@@ -1,7 +1,16 @@
 {
-  "name": "Personal Vault",
-  "machine": "vault-host",
-  "binary": "/absolute/path/on/host/herdrmd",
-  "vault": "personal",
-  "file": "folder/note.md"
+  "targets": [
+    {
+      "name": "NAS · 개인 Obsidian",
+      "machine": "vault-host",
+      "binary": "/absolute/path/on/host/herdrmd",
+      "vault": "personal"
+    },
+    {
+      "name": "NAS · 회사 Obsidian",
+      "machine": "vault-host",
+      "binary": "/absolute/path/on/host/herdrmd",
+      "vault": "work"
+    }
+  ]
 }

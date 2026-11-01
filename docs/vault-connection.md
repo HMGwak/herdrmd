@@ -29,7 +29,7 @@ Linux에서 XDG 변수가 없으면 사용자 홈의 `.config`, `.local/share`, 
 
 ## Herdr에서 보기
 
-설치한 `+` 메뉴의 **Obsidian 볼트 열기**로 다시 여는 방법은 [메뉴 진입점](open-menu.md)을 따른다. 한 대상 설정을 사용하는 초기 구현이며 컴퓨터·볼트 선택 창은 아직 없다.
+설치한 `+` 메뉴의 **Obsidian 볼트 열기**로 다시 여는 방법은 [메뉴 진입점](open-menu.md)을 따른다. 등록한 대상이 여러 개면 개인·회사 등의 이름으로 선택한다. NAS 직접 연결도 같은 설정을 사용한다. 폴더 등록 UI와 자동 탐지는 아직 없다.
 
 설치된 mod에는 main.js, api.js, vault-view.js, mod.json이 필요하다. 기존 mod를 확인·백업하고 전용 폴더만 갱신한다. `herdr-app check <mod folder>`를 실행한다.
 

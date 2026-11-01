@@ -8,12 +8,13 @@ export class VaultReader {
   constructor(options, cx) {
     this.options = options;
     this.vault = options.vault || "personal";
+    this.label = options.label || `Obsidian · ${this.vault}`;
     this.directory = "";
     this.entries = [];
     this.browsing = true;
     this.sequence = 0;
     this.listSequence = 0;
-    this.status = "개인 Obsidian에 연결 중…";
+    this.status = `${this.label}에 연결 중…`;
     this.file = "";
     this.editor = EditorState.new({ language: "markdown", value: "", readonly: true, soft_wrap: true });
     cx.spawn(async (cx) => {
@@ -87,7 +88,7 @@ export class VaultReader {
       else await this.read(this.file);
     });
     const content = this.browsing ? v_flex().id("vault-folders").flex_1().min_h(0).gap(4).overflow_y_scroll()
-      .child(row("vault-root", "개인 볼트 /", () => this.list("")))
+      .child(row("vault-root", `${this.label} /`, () => this.list("")))
       .child(this.directory ? row("vault-parent", "↑ 상위 폴더", () => this.list(parent)) : div())
       .child(div().text_size(12).text_color(t.muted).child(this.directory || "/"))
       .children(this.entries.map((entry, index) => row(`vault-entry-${index}`,
@@ -98,7 +99,7 @@ export class VaultReader {
         .child(Editor.new(this.editor).flex_1());
     return v_flex().id("herdrmd-vault").size_full().p(16).gap(8)
       .bg(t.surface).text_color(t.foreground)
-      .child(div().text_size(18).font_semibold().child(this.options.label || "개인 Obsidian"))
+      .child(div().text_size(18).font_semibold().child(this.label))
       .child(div().text_size(12).text_color(t.muted).child("읽기 전용"))
       .child(h_flex().gap(8).child(toggle).child(refresh))
       .child(div().text_size(12).text_color(t.muted).child(this.status))
