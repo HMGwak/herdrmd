@@ -83,6 +83,8 @@ function* inline(text, links, scope) {
   }
   const output = [], special = /[\\`<!\[]/g, newline = /[\r\n]/g;
   let index = 0, lineEnd = 0;
+  let nextTagEnd = text.indexOf(">"), nextWikiEnd = text.indexOf("]]");
+  const rawCodeOpening = /<(code|pre)\b[^>]*>/iy;
   let processed = 0;
   while (index < text.length) {
     if (++processed % 128 === 0) yield;
@@ -101,20 +103,23 @@ function* inline(text, links, scope) {
       output.push(text.slice(index, end)); index = end; continue;
     }
     if (text[index] === "<") {
-      const rawCode = /^<(code|pre)\b[^>]*>/i.exec(text.slice(index));
+      if (nextTagEnd >= 0 && nextTagEnd < index + 1) nextTagEnd = text.indexOf(">", index + 1);
+      rawCodeOpening.lastIndex = index;
+      const rawCode = nextTagEnd < 0 ? null : rawCodeOpening.exec(text);
       if (rawCode) {
         const close = new RegExp(`</${rawCode[1]}\\s*>`, "ig");
         close.lastIndex = index + rawCode[0].length;
         const match = close.exec(text), end = match ? match.index + match[0].length : text.length;
         output.push(text.slice(index, end)); index = end; continue;
       }
-      const closing = text.indexOf(">", index + 1);
+      const closing = nextTagEnd;
       if (closing >= 0 && closing < lineEnd) { output.push(text.slice(index, closing + 1)); index = closing + 1; continue; }
     }
     const embedded = text.startsWith("![[", index);
     if (embedded || text.startsWith("[[", index)) {
       const opening = index + (embedded ? 1 : 0);
-      const end = text.indexOf("]]", opening + 2);
+      if (nextWikiEnd >= 0 && nextWikiEnd < opening + 2) nextWikiEnd = text.indexOf("]]", opening + 2);
+      const end = nextWikiEnd;
       if (end < 0 || end >= lineEnd - 1) { output.push(text.slice(index, lineEnd)); index = lineEnd; continue; }
       const raw = text.slice(opening + 2, end), separator = raw.indexOf("|");
       const target = (separator < 0 ? raw : raw.slice(0, separator)).trim();

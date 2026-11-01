@@ -27,8 +27,19 @@ export class EditModel {
   }
   snapshot(state) { return { text: state.text, revision: state.revision, dirty: state.dirty }; }
   checkpoint(state) {
-    const snapshot = this.snapshot(state);
-    state.queue = state.queue.catch(() => {}).then(() => this.persist(state.document.path, snapshot));
+    state.pendingSnapshot = this.snapshot(state);
+    if (!state.checkpointing) {
+      state.checkpointing = true;
+      state.queue = state.queue.catch(() => {}).then(async () => {
+        try {
+          while (state.pendingSnapshot) {
+            const snapshot = state.pendingSnapshot;
+            state.pendingSnapshot = null;
+            await this.persist(state.document.path, snapshot);
+          }
+        } finally { state.checkpointing = false; }
+      });
+    }
     return state.queue;
   }
   edit(path, text) {
@@ -37,6 +48,18 @@ export class EditModel {
     state.text = text; state.version += 1; state.dirty = true; state.status = state.saving ? '저장 중' : '수정 중'; state.error = '';
     this.checkpoint(state).catch(error => { state.status = '저장 실패'; state.error = `초안 저장 실패: ${error}`; this.changed(path); });
     this.changed(path); return true;
+  }
+  async retry(path) {
+    const state = this.states.get(path);
+    if (!state?.blocked || state.reloading) return this.flush(path);
+    // A failed draft read has no editable changes. Re-read it rather than
+    // letting Retry silently return from flush's blocked-state guard.
+    await state.queue.catch(() => {});
+    if (this.states.get(path) !== state || state.reloading) return;
+    this.states.delete(path);
+    const recovered = await this.attach(state.document);
+    this.changed(path);
+    return recovered;
   }
   async flush(path) {
     const state = this.states.get(path);
@@ -66,11 +89,21 @@ export class EditModel {
     if (state?.reloading) throw new Error('원본을 다시 읽는 중입니다.');
     if (state) state.reloading = true;
     try {
-    if (state?.saving) await state.saving;
-    if (state?.dirty) { await state.queue; await archive(path, this.snapshot(state)); }
-    const document = await read();
-    if (state) { Object.assign(state, { document, text: document.text, revision: document.revision, dirty: false, error: '', status: '저장됨', blocked: false }); await this.checkpoint(state); }
-    this.changed(path); return document;
+      if (state?.saving) await state.saving;
+      if (state?.dirty || state?.blocked) {
+        // An earlier failed checkpoint must not block archiving the in-memory
+        // draft. CAS still protects the live draft file at the next checkpoint.
+        await state.queue.catch(() => {});
+        await archive(path, this.snapshot(state));
+      }
+      const document = await read();
+      if (state) {
+        Object.assign(state, { document, text: document.text, revision: document.revision, dirty: false, error: '', status: '저장됨', blocked: false });
+        try { await this.checkpoint(state); }
+        catch (error) { state.blocked = true; state.status = '저장 실패'; state.error = `초안 저장 실패: ${error}`; }
+      }
+      this.changed(path);
+      return document;
     } finally { if (state) state.reloading = false; this.changed(path); }
   }
 }

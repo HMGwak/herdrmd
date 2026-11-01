@@ -21,8 +21,12 @@ export class VaultReader {
     this.transport = new EditTransport(options, this.vault);
     this.edits = new EditModel({ load: path => this.transport.load(path), persist: (path, draft) => this.transport.persist(path, draft), write: (path, rev, text) => this.transport.write(path, rev, text), changed: path => {
       const state = this.edits.states.get(path);
-      if (this.closed || !state || !this.model.documents.has(path)) return;
-      this.model.documents.set(path, { ...state.document, text: state.text });
+      if (this.closed || !state) return;
+      if (!this.model.documents.has(path)) {
+        if (state.error) { this.notice = `${fileTitle(path)} · 저장 실패`; cx.notify(); }
+        return;
+      }
+      this.publishDocument(path, state);
       cx.notify();
     } });
     this.settings = new VaultSettings(options, cx);
@@ -106,11 +110,13 @@ export class VaultReader {
     const document = this.model.document;
     if (this.wikiNavigation?.state && !this.currentLinkSource(this.wikiNavigation.state.source)) this.wikiNavigation.cancel();
     const state = document && this.edits.states.get(document.path);
-    const readonly = !document || document.read_only || !state || state.loading || state.reloading || state.blocked;
+    const readonly = Boolean(!document || document.read_only || !state || state.loading || state.reloading || state.blocked);
     if (readonly !== this.editorReadonly) this.createEditor(readonly);
     if (document !== this.editorDocument) {
       this.settingEditor = true;
-      if (this.editor.value() !== (document?.text ?? "")) this.editor.set_value(document?.text ?? "");
+      const text = document?.text ?? "";
+      const normalize = value => value.replace(/\r\n|\r/g, "\n");
+      if (this.editorDocument?.path !== document?.path || normalize(this.editor.value()) !== normalize(text)) this.editor.set_value(text);
       // The native editor may normalize CRLF to LF. Deferred change events for
       // this programmatic value must not create a new dirty revision.
       this.editorBaseline = this.editor.value();
@@ -119,24 +125,33 @@ export class VaultReader {
     }
   }
 
+  publishDocument(path, state) {
+    const current = this.model.documents.get(path);
+    const document = state.text === state.document.text ? state.document : { ...state.document, text: state.text };
+    // Status-only updates must not invalidate link requests or cached previews.
+    if (current && Object.keys(current).length === Object.keys(document).length &&
+      Object.keys(document).every(key => current[key] === document[key])) return current;
+    this.model.documents.set(path, document);
+    return document;
+  }
+
   action(cx, operation) {
     if (this.closed) return;
     cx.spawn(async (cx) => {
-      const pending = operation(cx);
-      this.syncEditor();
-      if (!this.closed) cx.notify();
       try {
+        const pending = operation(cx);
+        this.syncEditor();
+        if (!this.closed) cx.notify();
         await pending;
         if (this.closed) return;
         const document = this.model.document;
         if (document) {
           const state = await this.edits.attach(document);
-          if (!this.closed && this.model.selected === document.path) this.model.documents.set(document.path, { ...state.document, text: state.text });
+          if (!this.closed && this.model.selected === document.path) this.publishDocument(document.path, state);
         }
+        this.syncEditor();
       } catch (error) { this.notice = String(error); }
-      if (this.closed) return;
-      this.syncEditor();
-      cx.notify();
+      if (!this.closed) cx.notify();
     });
   }
 
@@ -285,7 +300,7 @@ export class VaultReader {
     }
     else if (link) this.followLink(preview.links.indexOf(link), cx);
     else if (/^https?:\/\//i.test(url)) cx.open_url(url);
-    else { this.notice = "이 링크 형식의 탐색은 아직 지원하지 않습니다. 원문에서 링크를 확인하세요."; cx.notify(); }
+    else { this.notice = "지원하지 않는 링크 형식입니다."; cx.notify(); }
   }
 
   linkPanel(t) {
@@ -386,7 +401,7 @@ export class VaultReader {
         this.previewJobs.delete(document); this.preparePreview(document, cx); cx.notify();
       }, t));
     else if (document?.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
-    else if (this.mode === "source" && document) body = Editor.new(this.editor).flex_1().min_h(0);
+    else if (this.mode === "source") body = document ? Editor.new(this.editor).flex_1().min_h(0) : div().flex_1().min_h(0);
     else if (displayed) {
       const { document: shown, path } = displayed;
       const preview = this.previewLinks.get(shown), metadata = this.previewMetadata.get(shown);
@@ -406,6 +421,11 @@ export class VaultReader {
             .bg(m.selected === path ? t.surface : t.chrome).border_r(1).border_color(t.border).cursor_pointer().tooltip(path)
             .on_click((_event, cx) => this.open(path, cx))
             .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(m.selected === path ? t.foreground : t.muted).child(fileTitle(path)))
+            .when(Boolean(this.edits.states.get(path)?.dirty || this.edits.states.get(path)?.error), el => el
+              .child(div().flex_none().text_size(11).text_color(this.edits.states.get(path)?.error ? t.blocked : t.muted)
+                .tooltip(this.edits.states.get(path)?.status || "수정 중")
+                .accessibility_label(this.edits.states.get(path)?.status || "수정 중")
+                .child(this.edits.states.get(path)?.error ? "!" : "•")))
             .child(div().id(`close-document-${index}`).size(22).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
               .tooltip("문서 닫기").accessibility_label(`${fileTitle(path)} 닫기`).child("×").on_click((_event, cx) => {
                 cx.stop_propagation(); this.save(cx, path); this.action(cx, () => m.closeTab(path));
@@ -415,8 +435,8 @@ export class VaultReader {
           .child(this.button("preview-mode", "읽기", cx => { this.save(cx); this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
           .child(this.button("source-mode", document.read_only ? "원문" : "편집", cx => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))))
       .when(Boolean(this.edits.states.get(m.selected)?.error), el => el.child(v_flex().px(12).py(8).gap(5)
-        .child(div().text_size(12).child(this.edits.states.get(m.selected)?.error || ""))
-        .child(h_flex().gap(8).child(this.button("retry-save", "재시도", cx => this.save(cx), t))
+        .child(div().text_size(12).text_color(t.blocked).child(this.edits.states.get(m.selected)?.error || ""))
+        .child(h_flex().gap(8).child(this.button("retry-save", "재시도", cx => this.action(cx, () => this.edits.retry(m.selected)), t))
           .child(this.button("reload-original", "원본 다시 읽기 · 초안 보관", cx => this.reload(cx), t)))))
       .when(Boolean(linkPanel), (el) => el.child(linkPanel))
       .child(body);
@@ -443,6 +463,6 @@ export class VaultReader {
       .when(Boolean(m.document || this.notice), el => el.child(h_flex().h(22).flex_none().px(12).gap(10).items_center().border_t(1).border_color(t.border).text_size(10).text_color(t.dim)
         .child(div().flex_none().child(m.document?.read_only ? "읽기 전용" : (this.edits.states.get(m.selected)?.status || "읽기")))
         .child(div().flex_1().min_w(0).truncate().tooltip(this.notice || (m.document ? documentStatus(m.document) : ""))
-          .child(this.notice || (m.document ? documentStatus(m.document) : "")))));
+          .child(this.notice || ""))));
   }
 }

@@ -29,6 +29,8 @@ export class EditTransport {
     this.snapshots.set(path, raw);
     if (raw === null) return null;
     const value = JSON.parse(raw);
+    if (!value || typeof value !== "object" || typeof value.text !== "string" ||
+      typeof value.dirty !== "boolean" || !/^[a-f0-9]{64}$/i.test(value.revision || "")) throw new Error("초안 형식이 올바르지 않습니다.");
     if (value.key !== this.key(path)) throw new Error('초안 식별자가 일치하지 않습니다.');
     return value;
   }
@@ -38,7 +40,7 @@ export class EditTransport {
     this.snapshots.set(path, raw);
   }
   async archive(path, draft) {
-    await writeTextFile(localJoin((await this.directory()).drafts, `recovered-${Date.now()}-${Math.random().toString(36).slice(2)}.json`), JSON.stringify({ key: this.key(path), ...draft }), null);
+    await writeTextFile(localJoin((await this.directory()).drafts, `recovered-${Date.now()}-${Math.random().toString(36).slice(2)}.json`), JSON.stringify({ key: this.key(path), ...draft, source: this.snapshots.get(path) ?? null }), null);
   }
   async write(path, revision, text) {
     const file = localJoin((await this.directory()).directory, `request-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);

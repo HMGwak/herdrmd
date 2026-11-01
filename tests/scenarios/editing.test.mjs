@@ -185,8 +185,134 @@ test('transport draft CAS snapshots follow serialized checkpoints across rapid e
   await model.attach(note()); model.edit('한글.md', 'one');
   await new Promise(ok => setImmediate(ok)); model.edit('한글.md', 'two'); const saving = model.flush('한글.md');
   gate.resolve(); await saving;
-  assert.equal(cas.length, 4);
+  assert.equal(cas.length, 3);
   for (let i = 1; i < cas.length; i++) assert.equal(cas[i].expected, cas[i - 1].text);
   assert.equal(JSON.parse(cas.at(-1).text).dirty, false);
   delete globalThis.__draftTransportTest;
+});
+
+test('original reload archives a blocked unreadable draft before replacing it', async () => {
+  const archive = [];
+  const model = new EditModel({ load: async () => { throw new Error('invalid JSON'); }, persist: async () => {}, write: async () => {} });
+  const state = await model.attach(note());
+  assert.equal(state.blocked, true);
+  await model.reload('한글.md', async () => note('한글.md', 'remote'), async (path, draft) => archive.push({ path, draft }));
+  assert.equal(archive.length, 1);
+  assert.equal(archive[0].path, '한글.md');
+});
+
+test('transport recovery preserves the exact unreadable draft instead of discarding its raw bytes', async () => {
+  const source = await readFile(new URL('edit-transport.js', root), 'utf8');
+  let broken = '{"text":"synthetic lost draft",';
+  const files = new Map();
+  globalThis.__brokenDraftTest = {
+    exists: async () => true, readFile: async () => broken,
+    writeTextFile: async (path, raw) => files.set(path, JSON.parse(raw)),
+  };
+  const prelude = 'const { exists, readFile, writeTextFile } = globalThis.__brokenDraftTest;';
+  const { EditTransport } = await import(`data:text/javascript;base64,${Buffer.from(prelude + source.replace(/^import .*;\n/gm, '')).toString('base64')}`);
+  delete globalThis.__brokenDraftTest;
+  const transport = new EditTransport({ binary: '/synthetic/herdrmd' }, 'synthetic');
+  transport.directory = async () => ({ drafts: '/synthetic/drafts' });
+  await assert.rejects(transport.load('note.md'), SyntaxError);
+  await transport.archive('note.md', { text: 'remote', dirty: false });
+  assert.equal([...files.values()][0].source, broken);
+  broken = JSON.stringify({ key: transport.key('note.md'), text: 'unrecognized draft', revision: 'invalid', dirty: true });
+  await assert.rejects(transport.load('note.md'), /초안 형식/);
+  await transport.archive('note.md', { text: 'remote', dirty: false });
+  assert.equal([...files.values()].at(-1).source, broken);
+});
+
+test('Retry re-reads a previously inaccessible draft and restores it before any remote write', async () => {
+  let failed = true, writes = 0;
+  const model = new EditModel({ load: async () => {
+    if (failed) throw new Error('temporarily unavailable');
+    return { text: 'recovered', revision: 'a'.repeat(64), dirty: true };
+  }, persist: async () => {}, write: async () => { writes++; return note(); } });
+  await model.attach(note());
+  failed = false;
+  await model.retry('한글.md');
+  assert.equal(model.states.get('한글.md').text, 'recovered');
+  assert.equal(model.states.get('한글.md').dirty, true);
+  assert.equal(model.states.get('한글.md').blocked, undefined);
+  assert.equal(writes, 0);
+});
+
+test('rapid edits coalesce durable checkpoints while preserving the final draft before remote save', async () => {
+  const gate = deferred(), persisted = [], written = [];
+  const model = new EditModel({ load: async () => null, persist: async (_, draft) => {
+    persisted.push(draft.text);
+    if (persisted.length === 1) await gate.promise;
+  }, write: async (path, revision, text) => { written.push(text); return note(path, text); } });
+  await model.attach(note());
+  model.edit('한글.md', 'first');
+  await new Promise(ok => setImmediate(ok));
+  for (let i = 0; i < 100; i++) model.edit('한글.md', `edit ${i}`);
+  const saving = model.flush('한글.md');
+  assert.deepEqual(persisted, ['first']);
+  gate.resolve();
+  await saving;
+  assert.deepEqual(written, ['edit 99']);
+  assert.equal(persisted.at(-1), 'edit 99');
+  assert.ok(persisted.length <= 3);
+});
+
+test('syncEditor does not reset native CRLF/CR editor selection after autosave', async () => {
+  const viewSource = await readFile(new URL('vault-view.js', root), 'utf8');
+  const { VaultReader } = await import(`data:text/javascript;base64,${Buffer.from(viewSource.replace(/^import .*;\n/gm, '')).toString('base64')}`);
+  for (const ending of ['\r\n', '\r']) {
+    const reader = Object.create(VaultReader.prototype);
+    let resets = 0;
+    reader.closed = false;
+    const before = note('normalized.md', `edited${ending}text`), after = { ...before, revision: 'b'.repeat(64) };
+    reader.model = { selected: before.path, document: after };
+    reader.edits = { states: new Map([[before.path, { document: after, text: after.text }]]) };
+    reader.editorReadonly = false;
+    reader.editorDocument = before;
+    reader.editor = { value: () => 'edited\ntext', set_value() { resets++; } };
+    reader.syncEditor();
+    assert.equal(resets, 0);
+    assert.equal(reader.editorBaseline, 'edited\ntext');
+    const moved = { ...after, path: 'another.md' };
+    reader.model.document = moved;
+    reader.model.selected = moved.path;
+    reader.edits.states.set(moved.path, { document: moved, text: moved.text });
+    reader.syncEditor();
+    assert.equal(resets, 1);
+  }
+});
+
+test('coalesced checkpoint failure keeps the newest draft and retries before a remote write', async () => {
+  const gate = deferred(), persisted = [], written = [];
+  let fail = true;
+  const model = new EditModel({ load: async () => null, persist: async (_, draft) => {
+    persisted.push(draft.text);
+    if (fail) { await gate.promise; throw Error('synthetic disk failure'); }
+  }, write: async (path, revision, text) => { written.push(text); return note(path, text); } });
+  await model.attach(note());
+  model.edit('한글.md', 'one');
+  await new Promise(ok => setImmediate(ok));
+  model.edit('한글.md', 'latest');
+  const saving = model.flush('한글.md');
+  gate.resolve();await saving;
+  assert.deepEqual(written, []);
+  assert.equal(model.states.get('한글.md').text, 'latest');
+  fail = false;await model.retry('한글.md');
+  assert.deepEqual(written, ['latest']);
+  assert.equal(model.states.get('한글.md').dirty, false);
+  assert.equal(persisted.at(-1), 'latest');
+});
+
+test('original reload archives after a failed draft CAS while preserving the competing draft', async () => {
+  const archives = [];
+  const model = new EditModel({ load: async () => null, persist: async () => { throw Error('CAS mismatch'); }, write: async () => { throw Error('must not write'); } });
+  const state = await model.attach(note());
+  model.edit('한글.md', 'my preserved draft');
+  await state.queue.catch(() => {});
+  const original = await model.reload('한글.md', async () => note('한글.md', 'current original'), async (path, draft) => archives.push(draft));
+  assert.equal(archives[0].text, 'my preserved draft');
+  assert.equal(original.text, 'current original');
+  assert.equal(state.text, 'current original');
+  assert.equal(state.blocked, true);
+  assert.match(state.error, /CAS mismatch/);
 });

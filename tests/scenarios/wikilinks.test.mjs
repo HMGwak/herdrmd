@@ -493,3 +493,66 @@ test("pending link lookup has no visible status panel", async () => {
   pending.resolve(found("Target.md"));
   await task;
 });
+
+test("unrelated reader actions preserve document identity during pending link resolution", async () => {
+  const { reader, document, opened } = readerHarness(), pending = deferred(), tasks = [];
+  reader.model.selected = "Source.md";
+  document.path = "Source.md";
+  reader.model.documents = new Map([[document.path, document]]);
+  Object.defineProperty(reader.model, "document", { get() { return this.documents.get(this.selected); } });
+  const cx = { notify() {}, spawn(fn) { tasks.push(fn(cx)); } };
+  reader.action = VaultReader.prototype.action;
+  reader.syncEditor = () => {};
+  integration.exec = () => pending.promise;
+  reader.followLink(0, cx);
+  reader.action(cx, async () => {});
+  await tasks[1];
+  assert.equal(reader.model.document, document);
+  pending.resolve({ code: 0, stdout: JSON.stringify({ resolution: found("Target.md"), document: null }) });
+  await tasks[0];
+  assert.deepEqual(opened, ["Target.md"]);
+});
+
+test("synchronous reader operation errors become recoverable notices", async () => {
+  const { reader } = readerHarness(), tasks = [];
+  reader.syncEditor = () => {};
+  const cx = { notify() {}, spawn(fn) { tasks.push(fn(cx)); } };
+  VaultReader.prototype.action.call(reader, cx, () => { throw new Error("synthetic operation failure"); });
+  await Promise.all(tasks);
+  assert.match(reader.notice, /synthetic operation failure/);
+});
+
+test("real dirty edit states keep preview identity through save-status notifications", async () => {
+  const editSource = await readFile(new URL('../../integrations/herdr/mods/herdrmd/edit-model.js', import.meta.url), 'utf8');
+  const { EditModel } = await import(moduleUrl(editSource));
+  const { reader, document } = readerHarness();
+  document.path = reader.model.selected;
+  reader.model.documents = new Map([[document.path, document]]);
+  Object.defineProperty(reader.model, 'document', { get() { return this.documents.get(this.selected); } });
+  const gate = deferred();
+  reader.edits = new EditModel({ load: async () => null, persist: async () => {},
+    write: async (path, revision, text) => { await gate.promise; return { ...document, path, revision: 'b'.repeat(64), text }; },
+    changed: path => reader.publishDocument(path, reader.edits.states.get(path)),
+  });
+  await reader.edits.attach(document);
+  reader.edits.edit(document.path, document.text + 'dirty');
+  const dirty = reader.model.document;
+  const preview = reader.previewFor(dirty);
+  const saving = reader.edits.flush(document.path);
+  await new Promise(ok => setImmediate(ok));
+  assert.equal(reader.model.document, dirty);
+  assert.equal(reader.previewFor(reader.model.document), preview);
+  gate.resolve(); await saving;
+  const committed = reader.model.document;
+  assert.notEqual(committed.revision, dirty.revision);
+  reader.publishDocument(document.path, reader.edits.states.get(document.path));
+  assert.equal(reader.model.document, committed);
+});
+
+test("unfinished HTML/wiki openers preserve source without repeated tail scans", () => {
+  for (const raw of ['<'.repeat(200000), '[[unfinished\n'.repeat(12000), '<code '.repeat(12000), '<pre\n'.repeat(12000)]) {
+    const preview = renderWikilinks(raw);
+    assert.equal(preview.markdown, raw);
+    assert.deepEqual(preview.links, []);
+  }
+});
