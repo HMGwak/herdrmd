@@ -122,7 +122,7 @@ export class VaultReader {
   action(cx, operation) {
     if (this.closed) return;
     cx.spawn(async (cx) => {
-      const pending = operation();
+      const pending = operation(cx);
       this.syncEditor();
       if (!this.closed) cx.notify();
       try {
@@ -220,7 +220,7 @@ export class VaultReader {
     const navigation = this.wikiNavigation;
     const source = { path: this.model.selected, document, generation: this.model.readSequence };
     this.notice = "";
-    this.action(cx, async () => {
+    this.action(cx, async (cx) => {
       const action = await navigation.follow(link.target, source, (from, target) => this.followTarget(from, target), (source) => this.currentLinkSource(source));
       if (action) this.openResolvedLink(action, cx);
     });

@@ -1,5 +1,7 @@
 # 개발 시작과 검증
 
+Herdr 이벤트의 Context는 해당 콜백 안에서만 사용한다. 비동기 링크 조회 후 문서를 열 때는 `cx.spawn`이 제공한 AsyncContext를 전달한다. 지연 응답 뒤 클릭 Context가 만료되는 회귀 시나리오를 Node 검사에 포함한다.
+
 Rust `1.94.0`을 사용한다. rustup 환경에서는 루트의 `rust-toolchain.toml`이 버전과 rustfmt를 선택한다. Homebrew 등의 직접 설치는 파일이 버전을 강제하지 않으므로 `rustc --version`, `cargo --version`으로 같은 버전인지 확인한다.
 
 ```sh

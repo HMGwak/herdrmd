@@ -259,7 +259,7 @@ const readerHarness = () => {
   Object.assign(reader, { options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
     model: { selected: "folder/source.md", document, readSequence: 7 }, previewMetadata: new WeakMap(), previewLinks: new WeakMap(),
     previewSequence: 0, wikiScope: "synthetic", closed: false, notice: "" });
-  reader.action = (_cx, operation) => { tasks.push(operation()); };
+  reader.action = (cx, operation) => { tasks.push(operation(cx)); };
   reader.open = (path, _cx, { notice = "" } = {}) => { reader.wikiNavigation?.cancel(); reader.notice = notice; opened.push(path); };
   const cx = { notify() {}, open_url(url) { external.push(url); } };
   return { reader, tasks, opened, external, cx, document };
@@ -399,4 +399,26 @@ test("a normal prefetched follow uses one RPC, while null or omitted documents r
     assert.deepEqual(requests, mode === "null" || mode === "omitted" ? [["read", targetPath]] : []);
     assert.equal(model.readError, "");
   }
+});
+
+test("delayed link resolution uses the spawned context after the click context expires", async () => {
+  const { reader, opened } = readerHarness(), pending = deferred(), tasks = [];
+  let valid = true, notifications = 0;
+  const asyncCx = { notify() { notifications++; }, spawn(handler) { tasks.push(handler(asyncCx)); } };
+  const clickCx = {
+    notify() { assert.ok(valid, "expired click context used for notify"); },
+    spawn(handler) { assert.ok(valid, "expired click context used for spawn"); tasks.push(handler(asyncCx)); },
+  };
+  reader.action = VaultReader.prototype.action;
+  reader.syncEditor = () => {};
+  reader.open = (path, cx) => { cx.notify(); cx.spawn(async () => opened.push(path)); };
+  integration.exec = () => pending.promise;
+  reader.followLink(0, clickCx);
+  valid = false;
+  pending.resolve({ code: 0, stdout: JSON.stringify({ resolution: found("Target.md"), document: null }) });
+  let drained = 0;
+  while (drained < tasks.length) { const batch = tasks.slice(drained); drained = tasks.length; await Promise.all(batch); }
+  assert.deepEqual(opened, ["Target.md"]);
+  assert.doesNotMatch(reader.notice, /expired|context|TypeError/);
+  assert.ok(notifications > 0);
 });
