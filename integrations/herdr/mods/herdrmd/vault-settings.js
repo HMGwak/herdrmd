@@ -40,7 +40,8 @@ export class VaultSettings {
       .bg(t.surface).text_color(t.foreground)
       .child(h_flex().h(46).px(16).gap(10).items_center().flex_none()
         .child(div().id("settings-back").px(8).py(5).rounded(4).text_size(12)
-          .hover(el => el.bg(t.hover)).child("← 문서로 돌아가기").on_click(onClose))
+          .cursor_pointer().accessibility_label("문서로 돌아가기")
+          .hover(el => el.bg(t.hover)).child("← 문서로 돌아가기").on_click((_event, cx) => onClose(cx)))
         .child(div().flex_1())
         .child(div().text_size(11).text_color(t.muted).child("설정")))
       .child(div().h(1).bg(t.border).flex_none())
@@ -54,15 +55,6 @@ export class VaultSettings {
           .child(field("연결된 컴퓨터", this.options.machine || "이 컴퓨터"))
           .child(field("Markdown 폴더", this.path || (this.error ? "경로를 확인하지 못했습니다." : "폴더 경로를 확인하는 중…")))
           .when(Boolean(this.error), el => el.child(div().text_size(12).text_color(t.blocked).child(this.error)))
-          .child(h_flex().gap(10).items_center()
-            .child(div().id("choose-vault-folder-pending").px(12).py(7).rounded(5)
-              .bg(t.raised).text_color(t.dim).text_size(12).cursor_not_allowed().child("폴더 경로 선택 · 준비 중"))
-            .child(div().text_size(11).text_color(t.muted).child("현재 연결 유지")))
-          .child(div().text_size(12).text_color(t.muted)
-            .child("개인·회사 볼트의 컴퓨터와 Markdown 폴더를 직접 선택할 설정 자리입니다. 경로 변경은 이후에 연결됩니다."))
-          .child(div().h(1).bg(t.border))
-          .child(v_flex().gap(5)
-            .child(div().text_size(12).font_semibold().child("읽기 전용"))
-            .child(div().text_size(12).text_color(t.muted).child("설정 화면을 열어도 연결과 문서 원본은 바뀌지 않습니다.")))));
+        ));
   }
 }

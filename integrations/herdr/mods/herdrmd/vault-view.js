@@ -374,7 +374,7 @@ export class VaultReader {
   }
 
   render(cx) {
-    if (this.settingsOpen) return this.settings.render(cx, () => { this.settingsOpen = false; cx.notify(); });
+    if (this.settingsOpen) return this.settings.render(cx, cx => { this.settingsOpen = false; cx.notify(); });
     const t = theme(), m = this.model;
     const showExplorer = !this.compact || this.explorerOpen;
     const showDocument = !this.compact || !this.explorerOpen;
