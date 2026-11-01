@@ -1,0 +1,287 @@
+import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const moduleUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const source = await readFile(new URL("../../integrations/herdr/mods/herdrmd/wikilinks.js", import.meta.url), "utf8");
+const navigationSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/wiki-navigation.js", import.meta.url), "utf8");
+const readerModelSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/reader-model.js", import.meta.url), "utf8");
+const { ReaderModel } = await import(moduleUrl(readerModelSource));
+const frontmatterSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/frontmatter.js", import.meta.url), "utf8");
+const { renderWikilinks } = await import(moduleUrl(source));
+const { WikiNavigation } = await import(moduleUrl(navigationSource));
+const { splitFrontmatter } = await import(moduleUrl(frontmatterSource));
+const deferred = () => {
+  let resolve, reject;
+  const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; });
+  return { promise, resolve, reject };
+};
+const from = () => ({ path: "folder/source.md", document: {}, generation: 1 });
+const same = (source) => (candidate) => candidate === source;
+const found = (path, fragment = null) => ({ status: "found", matches: [path], fragment, truncated: false });
+
+test("wiki targets and aliases become table-bound private links without interpreting paths", () => {
+  const raw = "[[노트 이름]] / [[folder/Note#Heading|표시 이름]] / [[#^block]]";
+  const preview = renderWikilinks(raw, "synthetic-1");
+  assert.deepEqual(preview.links.map(({ target, label }) => [target, label]), [["노트 이름", "노트 이름"], ["folder/Note#Heading", "표시 이름"], ["#^block", "#^block"]]);
+  assert.equal(preview.links[0].url, "herdrmd-wiki://resolve/synthetic-1/1");
+  assert.equal(preview.byUrl.get(preview.links[1].url).target, "folder/Note#Heading");
+  assert.equal(preview.byUrl.has("herdrmd-wiki://resolve/forged/1"), false);
+  assert.equal(preview.markdown.includes("[["), false);
+  assert.equal(raw, "[[노트 이름]] / [[folder/Note#Heading|표시 이름]] / [[#^block]]");
+});
+
+test("inline code spans, including multiline and unequal backtick runs, stay exact", () => {
+  const raw = "`[[hidden]]` and ``[[hidden ` too]]``\n`code\n[[hidden multiline]]` then [[visible]]";
+  const preview = renderWikilinks(raw);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["visible"]);
+  assert.equal(preview.markdown.slice(0, raw.indexOf("[[visible]]")), raw.slice(0, raw.indexOf("[[visible]]")));
+  assert.equal(renderWikilinks("unmatched ` then [[visible]]").links.length, 1);
+});
+
+test("backtick/tilde fences and unclosed fences are retained byte for byte", () => {
+  const raw = "before\r\n```md\r\n[[inside]]\r\n```\r\n~~~\n[[tilde]]\n~~~\n> ````\n> [[quoted]]\n> ```\n> ````\n[[visible]]\n```\n[[unfinished]]";
+  const preview = renderWikilinks(raw);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["visible"]);
+  assert.ok(preview.markdown.startsWith(raw.slice(0, raw.indexOf("[[visible]]"))));
+  assert.ok(preview.markdown.endsWith("\n```\n[[unfinished]]"));
+});
+
+test("escaped openers, embeds, and indented code are left as source syntax", () => {
+  const raw = String.raw`\[[escaped]] ![[embedded]] ![[folder/note#part|alias]] \\[[visible]]` + "\n    [[indented]]\n\t[[tabbed]]\n";
+  const preview = renderWikilinks(raw);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["visible"]);
+  assert.ok(preview.markdown.startsWith(String.raw`\[[escaped]] ![[embedded]] ![[folder/note#part|alias]] \\`));
+  assert.ok(preview.markdown.endsWith("\n    [[indented]]\n\t[[tabbed]]\n"));
+});
+
+test("clear nested list items inherit their list context while indented examples remain code", () => {
+  const raw = "- parent\n    - [[Nested]]\n        1. [[Deep ordered]]\n    2. [[Ordered child]]\n\nparagraph\n\n    - [[standalone code]]\n\n- another parent\n        - [[deep code]]\n";
+  const preview = renderWikilinks(raw);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["Nested", "Deep ordered", "Ordered child"]);
+  assert.ok(preview.markdown.includes("    - [[standalone code]]"));
+  assert.ok(preview.markdown.includes("        - [[deep code]]"));
+  const ordered = renderWikilinks("1. parent\n    1. [[Ordered nested]]\n    - [[Bullet nested]]\n");
+  assert.deepEqual(ordered.links.map(({ target }) => target), ["Ordered nested", "Bullet nested"]);
+});
+
+test("alias punctuation cannot inject links, images, HTML, or formatting", () => {
+  const preview = renderWikilinks('[[Safe|x](https://evil.test) ![img](https://evil.test) <img src=x> `code` &amp; **bold**]]');
+  assert.equal(preview.links.length, 1);
+  assert.equal(preview.links[0].target, "Safe");
+  assert.equal(preview.markdown.match(/\]\(/g).length, 1);
+  assert.ok(preview.markdown.includes('\\<img src\\=x\\>'));
+  assert.ok(preview.markdown.includes('\\`code\\`'));
+  assert.ok(preview.markdown.includes('\\&amp\\;'));
+  assert.ok(preview.markdown.includes('\\*\\*bold\\*\\*'));
+  assert.equal(preview.markdown.includes("https://evil.test"), false);
+});
+
+test("comments, HTML attributes, raw code, empty and multiline wiki syntax stay literal", () => {
+  const raw = '<!-- [[comment]] --> <span data-note="[[attribute]]">[[visible]]</span> <code>[[raw code]]</code> <pre>[[pre]]</pre> [[]] [[ ]] [[multi\nline]]';
+  const preview = renderWikilinks(raw);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["visible"]);
+  assert.ok(preview.markdown.includes('data-note="[[attribute]]"'));
+  assert.ok(preview.markdown.includes('<code>[[raw code]]</code>'));
+  assert.ok(preview.markdown.endsWith('[[]] [[ ]] [[multi\nline]]'));
+});
+
+test("frontmatter is split before adaptation and the full original source remains untouched", () => {
+  const raw = '---\r\naliases: "[[metadata only]]"\r\n---\r\n# Heading\r\n[[body note]]\r\n';
+  const metadata = splitFrontmatter(raw), preview = renderWikilinks(metadata.body);
+  assert.deepEqual(preview.links.map(({ target }) => target), ["body note"]);
+  assert.equal(metadata.raw, 'aliases: "[[metadata only]]"\r\n');
+  assert.equal(metadata.body, '# Heading\r\n[[body note]]\r\n');
+  assert.equal(raw, '---\r\naliases: "[[metadata only]]"\r\n---\r\n# Heading\r\n[[body note]]\r\n');
+});
+
+test("a unique complete resolver result returns one open action and its fragment", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  const action = await navigation.follow("Target#Heading", source, async (path, target) => {
+    assert.equal(path, source.path); assert.equal(target, "Target#Heading");
+    return found("other/Target.md", "Heading");
+  }, same(source));
+  assert.equal(action.path, "other/Target.md");
+  assert.equal(action.fragment, "Heading");
+  assert.equal(navigation.state, null);
+  assert.equal(navigation.current(action, same(source)), true);
+  navigation.cancel();
+  assert.equal(navigation.current(action, same(source)), false);
+});
+
+test("ambiguous results require explicit path selection and cannot choose stale choices", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  const action = await navigation.follow("Same", source, async () => ({ status: "ambiguous", matches: ["a/Same.md", "b/Same.md"], fragment: "^block", truncated: false }), same(source));
+  assert.equal(action, null);
+  assert.equal(navigation.state.kind, "ambiguous");
+  assert.deepEqual(navigation.state.matches, ["a/Same.md", "b/Same.md"]);
+  assert.equal(navigation.choose(1, same(source)).path, "b/Same.md");
+  assert.equal(navigation.choose(1, same(source)).fragment, "^block");
+  assert.equal(navigation.choose(2, same(source)), null);
+  assert.equal(navigation.choose(0, () => false), null);
+  navigation.cancel();
+  assert.equal(navigation.choose(0, same(source)), null);
+});
+
+test("choice lists are bounded only when there are more than fifty actual matches", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  await navigation.follow("Same", source, async () => ({ status: "ambiguous", matches: Array.from({ length: 100 }, (_, index) => `${index}/Same.md`), fragment: null, truncated: false }), same(source));
+  assert.equal(navigation.state.matches.length, 50);
+  assert.equal(navigation.state.limited, true);
+  await navigation.follow("Same", source, async () => ({ status: "ambiguous", matches: ["a/Same.md", "b/Same.md"], fragment: null, truncated: true }), same(source));
+  assert.equal(navigation.state.limited, false);
+});
+
+test("partial results never open automatically but allow explicit selection of found paths", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  for (const result of [
+    { status: "incomplete", matches: ["Partial.md"], fragment: "^block", truncated: true },
+    { status: "incomplete", matches: ["Partial.md"], fragment: "^block", truncated: false },
+    { status: "found", matches: ["Partial.md"], fragment: "^block", truncated: true },
+  ]) {
+    const action = await navigation.follow("Partial", source, async () => result, same(source));
+    assert.equal(action, null);
+    assert.equal(navigation.state.kind, "ambiguous");
+    assert.equal(navigation.state.limited, false);
+    assert.match(navigation.state.message, /전체.*조회하지 못/);
+    assert.equal(navigation.choose(0, same(source)).path, "Partial.md");
+    assert.equal(navigation.choose(0, same(source)).fragment, "^block");
+    assert.equal(navigation.choose(0, () => false), null);
+    navigation.cancel();
+    assert.equal(navigation.choose(0, same(source)), null);
+  }
+});
+
+test("partial searches with no candidate explain incomplete coverage and path or permission checks", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  const action = await navigation.follow("Unknown", source, async () => ({ status: "incomplete", matches: [], fragment: null, truncated: true }), same(source));
+  assert.equal(action, null);
+  assert.equal(navigation.state.kind, "message");
+  assert.match(navigation.state.message, /전체.*조회하지 못/);
+  assert.match(navigation.state.message, /경로.*권한/);
+  assert.equal(navigation.choose(0, same(source)), null);
+});
+
+test("missing, inconsistent, and failed responses provide messages without an open action", async () => {
+  const navigation = new WikiNavigation(), source = from();
+  for (const result of [{ status: "not_found", matches: [], fragment: null, truncated: false },
+    { status: "found", matches: [], fragment: null, truncated: false },
+    { status: "found", matches: [42], fragment: null, truncated: false }]) {
+    assert.equal(await navigation.follow("Target", source, async () => result, same(source)), null);
+    assert.equal(navigation.state.kind, "message");
+  }
+  assert.equal(await navigation.follow("Target", source, async () => { throw new Error("synthetic disconnect"); }, same(source)), null);
+  assert.match(navigation.state.message, /synthetic disconnect/);
+});
+
+test("a later link selection wins over earlier successes and failures", async () => {
+  const navigation = new WikiNavigation(), source = from(), first = deferred(), second = deferred();
+  const old = navigation.follow("Old", source, () => first.promise, same(source));
+  const current = navigation.follow("Current", source, () => second.promise, same(source));
+  second.resolve({ status: "ambiguous", matches: ["a/Current.md", "b/Current.md"], fragment: null, truncated: false });
+  await current;
+  first.reject(new Error("obsolete failure")); await old;
+  assert.equal(navigation.state.kind, "ambiguous");
+  assert.equal(navigation.state.target, "Current");
+  const stale = deferred(), pending = navigation.follow("OldAgain", source, () => stale.promise, same(source));
+  await navigation.follow("Newest", source, async () => found("Newest.md"), same(source));
+  stale.resolve(found("OldAgain.md"));
+  assert.equal(await pending, null);
+  assert.equal(navigation.state, null);
+});
+
+test("document switch, refresh generation, and close invalidate pending navigation", async () => {
+  for (const change of ["switch", "refresh", "close"]) {
+    const navigation = new WikiNavigation(), source = from(), pending = deferred();
+    let current = source;
+    const isCurrent = (candidate) => candidate === current;
+    const following = navigation.follow("Target", source, () => pending.promise, isCurrent);
+    if (change === "close") navigation.close();
+    else current = { ...source, generation: source.generation + 1, ...(change === "switch" ? { path: "different.md" } : {}) };
+    pending.resolve(found("Target.md"));
+    assert.equal(await following, null);
+    assert.equal(navigation.state, null);
+  }
+});
+
+const readerSource = await readFile(new URL("../../integrations/herdr/mods/herdrmd/vault-view.js", import.meta.url), "utf8");
+const integration = { exec: null };
+globalThis.__herdrmdWikiTest = integration;
+const readerPrelude = `
+import { renderWikilinks } from "${moduleUrl(source)}";
+import { WikiNavigation } from "${moduleUrl(navigationSource)}";
+import { splitFrontmatter } from "${moduleUrl(frontmatterSource)}";
+import { parentPath } from "${moduleUrl(readerModelSource)}";
+const state = globalThis.__herdrmdWikiTest;
+const exec = (...args) => state.exec(...args);
+`;
+const { VaultReader } = await import(moduleUrl(readerPrelude + readerSource.replace(/^import .*;\n/gm, "")));
+delete globalThis.__herdrmdWikiTest;
+
+const readerHarness = () => {
+  const reader = Object.create(VaultReader.prototype), tasks = [], opened = [], external = [];
+  const document = { text: '---\nalias: "[[not a link]]"\n---\n[[Target#Heading|표시]]\n' };
+  Object.assign(reader, { options: { binary: "/opt/herdrmd", machine: "synthetic-nas" }, vault: "test-vault",
+    model: { selected: "folder/source.md", document, readSequence: 7 }, previewMetadata: new WeakMap(), previewLinks: new WeakMap(),
+    previewSequence: 0, wikiScope: "synthetic", closed: false, notice: "" });
+  reader.action = (_cx, operation) => { tasks.push(operation()); };
+  reader.open = (path, _cx, { notice = "" } = {}) => { reader.wikiNavigation?.cancel(); reader.notice = notice; opened.push(path); };
+  const cx = { notify() {}, open_url(url) { external.push(url); } };
+  return { reader, tasks, opened, external, cx, document };
+};
+
+test("reader sends exact from/target arguments on the configured NAS and opens a found document", async () => {
+  const { reader, tasks, opened, cx, document } = readerHarness(), calls = [];
+  const raw = document.text;
+  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify(found("notes/Target.md", "Heading")) }; };
+  reader.followLink(0, cx);
+  await Promise.all(tasks);
+  assert.deepEqual(calls, [["/opt/herdrmd", ["resolve", "--vault", "test-vault", "--from", "folder/source.md", "--target", "Target#Heading"], { on: "synthetic-nas" }]]);
+  assert.deepEqual(opened, ["notes/Target.md"]);
+  assert.match(reader.notice, /제목·블록/);
+  assert.equal(document.text, raw);
+  assert.equal(reader.previewFor(document).links.length, 1);
+});
+
+test("native preview callbacks resolve only table links; HTTP and stale callbacks stay separate", async () => {
+  const { reader, tasks, opened, external, cx, document } = readerHarness(), calls = [];
+  integration.exec = async (...args) => { calls.push(args); return { code: 0, stdout: JSON.stringify(found("Target.md")) }; };
+  reader.previewLink("herdrmd-wiki://resolve/forged/1", document, reader.model.selected, cx);
+  reader.previewLink("https://example.test/reference", document, reader.model.selected, cx);
+  reader.previewLink(reader.previewFor(document).links[0].url, {}, reader.model.selected, cx);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(external, ["https://example.test/reference"]);
+  reader.previewLink(reader.previewFor(document).links[0].url, document, reader.model.selected, cx);
+  await Promise.all(tasks);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(opened, ["Target.md"]);
+});
+
+
+test("fragment feedback is present before the first spawned loading frame and survives document completion", async () => {
+  const reader = Object.create(VaultReader.prototype), pending = deferred(), tasks = [], frames = [];
+  const sourceDocument = { text: "[[folder/Target#Heading]]", bytes: 26, encoding: "utf-8", line_endings: "lf", bom: false };
+  const targetDocument = { text: "# Heading\nSynthetic only", bytes: 24, encoding: "utf-8", line_endings: "lf", bom: false };
+  const model = new ReaderModel(async (operation, path) => operation === "files" ? { entries: [], truncated: false } : path === "Source.md" ? sourceDocument : pending.promise);
+  await model.open("Source.md");
+  Object.assign(reader, { model, closed: false, notice: "", editor: { set_value() {} }, wikiNavigation: new WikiNavigation() });
+  const source = { path: model.selected, document: model.document, generation: model.readSequence };
+  await reader.wikiNavigation.follow("folder/Target#Heading", source, async () => ({ status: "incomplete", matches: ["folder/Target.md"], fragment: "Heading", truncated: true }), (candidate) => reader.currentLinkSource(candidate));
+  const cx = {
+    // Native tasks can publish loading state immediately when spawn is called.
+    spawn(handler) { tasks.push(handler(cx)); },
+    notify() { frames.push({ path: model.selected, notice: reader.notice }); },
+  };
+  reader.chooseLink(0, cx);
+  assert.equal(model.selected, "folder/Target.md");
+  assert.ok(frames.length > 0);
+  assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
+  pending.resolve(targetDocument);
+  await Promise.all(tasks);
+  assert.equal(model.document, targetDocument);
+  assert.match(reader.notice, /위치 이동은 준비 중/);
+  assert.ok(frames.every((frame) => /위치 이동은 준비 중/.test(frame.notice)));
+  reader.open("Source.md", cx);
+  assert.equal(reader.notice, "");
+  await Promise.all(tasks);
+});

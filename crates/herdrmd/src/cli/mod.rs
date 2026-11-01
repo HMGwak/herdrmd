@@ -11,6 +11,7 @@ pub fn run() -> Result<()> {
              Usage: herdrmd vault add <name> <absolute Vault path>\n\
              Usage: herdrmd vault list\n\
              Usage: herdrmd files/read --vault <name> --path <Vault-relative path>\n\
+             Usage: herdrmd resolve --vault <name> --from <source.md> --target <wiki target>\n\
              Usage: herdrmd paths\n\
              Usage: herdrmd serve --state-dir <absolute scratch directory>\n\
              Usage: herdrmd service <ensure|wait|status|stop> --state-dir <directory>\n\
@@ -25,7 +26,7 @@ pub fn run() -> Result<()> {
     }
     if matches!(
         words.first(),
-        Some(Some("vault" | "files" | "read" | "paths"))
+        Some(Some("vault" | "files" | "read" | "resolve" | "paths"))
     ) {
         return vault_command(&args);
     }
@@ -97,6 +98,10 @@ fn vault_command(args: &[std::ffi::OsString]) -> Result<()> {
             let vault = registry.get(vault)?;
             if *operation == "files" { serde_json::to_value(vault.list(path)?)? }
             else { serde_json::to_value(document::read(vault, path)?)? }
+        }
+        [Some("resolve"), Some("--vault"), Some(vault), Some("--from"), Some(from), Some("--target"), Some(target)] => {
+            let registry = Registry::load(&config)?;
+            serde_json::to_value(herdrmd_core::markdown::resolve(registry.get(vault)?, from, target)?)?
         }
         _ => return Err("usage: vault add <name> <absolute path> | vault list | files/read --vault <name> --path <relative path> | paths; optional --config-dir <absolute path>".into()),
     };

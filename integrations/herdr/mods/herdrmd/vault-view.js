@@ -5,6 +5,8 @@ import { ReaderModel, parentPath, fileTitle, documentStatus } from "./reader-mod
 import { VaultSettings } from "./vault-settings.js";
 import { splitFrontmatter } from "./frontmatter.js";
 import { frontmatterView } from "./frontmatter-view.js";
+import { renderWikilinks } from "./wikilinks.js";
+import { WikiNavigation } from "./wiki-navigation.js";
 
 // The same read contract runs locally or on an explicitly selected core.
 export class VaultReader {
@@ -17,6 +19,9 @@ export class VaultReader {
     this.settingsOpen = Boolean(options.settings);
     this.expandedProperties = new Set();
     this.previewMetadata = new WeakMap();
+    this.previewLinks = new WeakMap();
+    this.previewSequence = 0;
+    this.wikiScope = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     this.mode = "preview";
     this.compact = true;
     this.explorerOpen = true;
@@ -33,6 +38,9 @@ export class VaultReader {
         else if (command === "settings") { this.settingsOpen = true; cx.notify(); }
         else if (command === "settings-close") { this.settingsOpen = false; cx.notify(); }
         else if (command === "collapse-all") { this.model.collapseAll(); cx.notify(); }
+        else if (/^follow-link-\d+$/.test(command)) this.followLink(Number(command.slice(12)) - 1, cx);
+        else if (/^choose-link-\d+$/.test(command)) this.chooseLink(Number(command.slice(12)) - 1, cx);
+        else if (command === "dismiss-link") { this.wikiNavigation?.cancel(); cx.notify(); }
         else if (command === "properties") this.toggleProperties(cx);
         else if (command === "browse") { this.explorerOpen = true; cx.notify(); }
         else if (command === "source" || command === "preview") { this.mode = command; this.explorerOpen = false; cx.notify(); }
@@ -58,6 +66,7 @@ export class VaultReader {
   syncEditor() {
     if (this.closed) return;
     const document = this.model.document;
+    if (this.wikiNavigation?.state && !this.currentLinkSource(this.wikiNavigation.state.source)) this.wikiNavigation.cancel();
     if (document !== this.editorDocument) {
       this.editor.set_value(document?.text ?? "");
       this.editorDocument = document;
@@ -77,9 +86,11 @@ export class VaultReader {
     });
   }
 
-  open(path, cx) {
+  open(path, cx, { notice = "" } = {}) {
+    this.wikiNavigation?.cancel();
     this.explorerOpen = false;
-    this.notice = "";
+    // Set navigation feedback before spawn can publish the first loading frame.
+    this.notice = notice;
     this.action(cx, () => this.model.open(path));
     if (parentPath(path)) this.action(cx, () => this.model.reveal(path));
   }
@@ -90,6 +101,7 @@ export class VaultReader {
   }
 
   refresh(cx) {
+    this.wikiNavigation?.cancel();
     this.notice = "";
     this.action(cx, () => Promise.all([
       this.model.refreshTree(),
@@ -100,10 +112,81 @@ export class VaultReader {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.wikiNavigation?.close();
     this.model.close();
     this.expandedProperties.clear();
     this.settings.close();
     this.editor.release();
+  }
+
+  previewFor(document) {
+    if (!this.previewMetadata.has(document)) this.previewMetadata.set(document, splitFrontmatter(document.text));
+    if (!this.previewLinks.has(document)) {
+      const metadata = this.previewMetadata.get(document);
+      this.previewLinks.set(document, renderWikilinks(metadata ? metadata.body : document.text, `${this.wikiScope}-${++this.previewSequence}`));
+    }
+    return this.previewLinks.get(document);
+  }
+
+  currentLinkSource(source) {
+    return !this.closed && source.path === this.model.selected && source.document === this.model.document && source.generation === this.model.readSequence;
+  }
+
+  async resolveLink(from, target) {
+    const result = await exec(this.options.binary,
+      ["resolve", "--vault", this.vault, "--from", from, "--target", target],
+      this.options.machine ? { on: this.options.machine } : {});
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `링크 조회 실패 (${result.code})`);
+    return JSON.parse(result.stdout);
+  }
+
+  followLink(index, cx) {
+    const document = this.model.document;
+    if (!document || document.text === null || this.model.readLoading || this.model.readError || this.closed) return;
+    const link = this.previewFor(document).links[index];
+    if (!link) return;
+    if (!this.wikiNavigation) this.wikiNavigation = new WikiNavigation();
+    const navigation = this.wikiNavigation;
+    const source = { path: this.model.selected, document, generation: this.model.readSequence };
+    this.notice = "";
+    this.action(cx, async () => {
+      const action = await navigation.follow(link.target, source, (from, target) => this.resolveLink(from, target), (source) => this.currentLinkSource(source));
+      if (action) this.openResolvedLink(action, cx);
+    });
+  }
+
+  chooseLink(index, cx) {
+    const action = this.wikiNavigation?.choose(index, (source) => this.currentLinkSource(source));
+    if (action) this.openResolvedLink(action, cx);
+  }
+
+  openResolvedLink(action, cx) {
+    if (!this.wikiNavigation?.current(action, (source) => this.currentLinkSource(source))) return;
+    this.mode = "preview";
+    this.open(action.path, cx, { notice: action.fragment ? "제목·블록 위치 이동은 준비 중입니다. 문서만 열었습니다." : "" });
+  }
+
+  previewLink(url, document, path, cx) {
+    if (this.closed || document !== this.model.document || path !== this.model.selected) return;
+    const preview = this.previewFor(document), link = preview.byUrl.get(url);
+    if (link) this.followLink(preview.links.indexOf(link), cx);
+    else if (/^https?:\/\//i.test(url)) cx.open_url(url);
+    else { this.notice = "이 링크 형식의 탐색은 아직 지원하지 않습니다. 원문에서 링크를 확인하세요."; cx.notify(); }
+  }
+
+  linkPanel(t) {
+    const state = this.wikiNavigation?.state;
+    if (!state || !this.currentLinkSource(state.source)) return null;
+    return v_flex().id("wiki-link-status").flex_none().min_w(0).px(12).py(8).gap(6).border_b(1).border_color(t.border)
+      .child(h_flex().min_w(0).gap(8)
+        .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(state.message))
+        .child(this.button("dismiss-wiki-link", "닫기", (cx) => { this.wikiNavigation.cancel(); cx.notify(); }, t)))
+      .when(state.kind === "ambiguous", (el) => el
+        .child(v_flex().id("wiki-link-choices").h(Math.min(5, state.matches.length) * 30).flex_none().min_h(0).overflow_y_scrollbar()
+          .children(state.matches.map((path, index) => div().id(`wiki-link-choice-${index}`).h(30).flex_none().px(8).py(5).rounded(4)
+            .text_size(12).text_color(t.foreground).truncate().tooltip(path).cursor_pointer().hover((s) => s.bg(t.hover))
+            .accessibility_label(path).child(path).on_click((_event, cx) => this.chooseLink(index, cx)))))
+        .when(state.limited, (el) => el.child(div().text_size(11).text_color(t.dim).child("처음 50개 경로까지 표시합니다. 볼트 안의 폴더 경로를 포함하면 대상을 좁힐 수 있습니다."))));
   }
 
   toggleProperties(cx) {
@@ -168,16 +251,14 @@ export class VaultReader {
     else if (document.text === null) body = div().p(24).text_size(13).text_color(t.muted).child("지원하지 않는 인코딩입니다. 원본은 변경하지 않았습니다.");
     else if (this.mode === "source") body = Editor.new(this.editor).flex_1().min_h(0);
     else {
-      if (!this.previewMetadata.has(document)) this.previewMetadata.set(document, splitFrontmatter(document.text));
-      const metadata = this.previewMetadata.get(document);
+      const preview = this.previewFor(document), metadata = this.previewMetadata.get(document);
+      const sourcePath = m.selected;
       body = v_flex().flex_1().min_h(0).min_w(0).px(this.compact ? 18 : 32).py(22)
       .when(Boolean(metadata), el => el.child(frontmatterView(metadata, this.expandedProperties.has(m.selected), t, cx => this.toggleProperties(cx))))
-      .child(TextView.markdown(`vault-preview-${m.selected}`, metadata ? metadata.body : document.text).selectable(true).scrollable(true).flex_1().min_h(0)
-        .on_link_click((url, cx) => {
-          if (/^https?:\/\//i.test(url)) cx.open_url(url);
-          else { this.notice = "문서 내부 링크 탐색은 준비 중입니다. 원문에서 링크를 확인하세요."; cx.notify(); }
-        }));
+      .child(TextView.markdown(`vault-preview-${m.selected}`, preview.markdown).selectable(true).scrollable(true).flex_1().min_h(0)
+        .on_link_click((url, cx) => this.previewLink(url, document, sourcePath, cx)));
     }
+    const linkPanel = this.linkPanel(t);
     return v_flex().flex_1().min_w(0).min_h(0)
       .child(h_flex().id("vault-document-tabs").h(36).flex_none().min_w(0).overflow_x_scroll().bg(t.chrome).border_b(1).border_color(t.border)
         .when(!m.tabs.length, (el) => el.child(div().px(14).py(9).text_size(12).text_color(t.dim).child("열린 문서 없음")))
@@ -193,6 +274,7 @@ export class VaultReader {
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).tooltip(m.selected || this.label).child(m.selected || this.label))
         .child(this.button("preview-mode", "읽기", (cx) => { this.mode = "preview"; cx.notify(); }, t, this.mode === "preview"))
         .child(this.button("source-mode", "원문", (cx) => { this.mode = "source"; cx.notify(); }, t, this.mode === "source")))
+      .when(Boolean(linkPanel), (el) => el.child(linkPanel))
       .child(body);
   }
 

@@ -3,6 +3,7 @@
 //! Read-only Vault access. No CLI, HTTP, Herdr or Obsidian runtime dependency.
 
 pub mod document;
+pub mod markdown;
 pub mod platform;
 pub mod vault;
 

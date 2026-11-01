@@ -49,6 +49,27 @@ fn cli_registration_listing_and_read_do_not_need_service() {
             assert_eq!(value["read_only"], true);
         }
     }
+    let resolved = run(
+        &config,
+        &[
+            "resolve",
+            "--vault",
+            "personal",
+            "--from",
+            "노트.md",
+            "--target",
+            "노트#절|별칭",
+        ],
+    );
+    assert!(
+        resolved.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    let resolved: Value = serde_json::from_slice(&resolved.stdout).unwrap();
+    assert_eq!(resolved["status"], "found");
+    assert_eq!(resolved["matches"][0], "노트.md");
+    assert_eq!(resolved["fragment"], "절");
     assert!(
         !run(
             &config,

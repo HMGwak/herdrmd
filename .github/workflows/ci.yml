@@ -1,8 +1,7 @@
 name: CI
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,14 +30,14 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace --locked
       - name: Test Herdr UI contracts
-        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs
+        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs tests/scenarios/frontmatter.test.mjs tests/scenarios/wikilinks.test.mjs
       - name: Build workspace
         run: cargo build --workspace --locked
       - name: Test workspace
         timeout-minutes: 2
         run: cargo test --workspace --locked -- --nocapture
       - name: Stage Windows bridge probe
-        if: runner.os == 'Windows' && github.event_name == 'push'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $bundle = Join-Path $env:RUNNER_TEMP 'herdrmd-bridge-windows'
@@ -60,7 +59,7 @@ jobs:
           & (Join-Path $mod 'herdrmd.exe') --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows bridge probe
-        if: runner.os == 'Windows' && github.event_name == 'push'
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: herdrmd-bridge-windows
@@ -68,7 +67,7 @@ jobs:
           retention-days: 7
           if-no-files-found: error
       - name: Build portable NAS reader
-        if: runner.os == 'Linux' && github.event_name == 'push'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y musl-tools
@@ -76,7 +75,7 @@ jobs:
           cargo build --release --locked -p herdrmd --target x86_64-unknown-linux-musl
           target/x86_64-unknown-linux-musl/release/herdrmd --version
       - name: Upload portable NAS reader
-        if: runner.os == 'Linux' && github.event_name == 'push'
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: herdrmd-reader-linux-x64

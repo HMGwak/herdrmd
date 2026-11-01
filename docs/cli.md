@@ -30,3 +30,7 @@ herdrmd obsidian -- <공식 CLI 인수>
 - 공식 CLI는 별도 도구다. 등록된 공식 Vault 이름/ID를 명시적으로 전달하고 stdout/stderr·종료 코드를 전달한다. 실행 파일이 없으면 명확히 진단하며 자체 명령으로 자동 대체하지 않는다.
 
 에이전트 기본 경로는 검색 → 읽기 → stdin 또는 파일로 수정 → revision 검사 저장 → 재조회다. MCP는 후속 범위다. 기존 `obsidian` 실행 파일이나 upstream skills를 덮어쓰는 shim을 설치하지 않는다.
+
+## 읽기 전용 위키 대상 조회
+
+현재 구현한 명령은 `herdrmd resolve --vault <등록명> --from <현재 상대경로.md> --target <위키 대상>`이다. JSON status는 found/ambiguous/not_found/incomplete이며 matches는 실제 Vault 상대경로 배열, fragment는 제목/블록 문자열 또는 null, truncated는 완전 조회 여부다. `--config-dir`은 다른 Vault 명령과 같이 마지막에 지정한다. 조회 경계·이름 비교·후보 선택은 [Vault 연결](vault-connection.md)의 위키링크 계약을 따른다. 생성·수정이나 프론트매터 aliases 조회는 수행하지 않는다.
