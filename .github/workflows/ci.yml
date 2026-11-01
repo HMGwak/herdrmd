@@ -30,8 +30,8 @@ jobs:
         run: cargo fmt --check
       - name: Check workspace
         run: cargo check --workspace --locked
-      - name: Test launcher configuration
-        run: node --test tests/scenarios/launcher.test.mjs
+      - name: Test Herdr UI contracts
+        run: node --test tests/scenarios/launcher.test.mjs tests/scenarios/reader-model.test.mjs
       - name: Build workspace
         run: cargo build --workspace --locked
       - name: Test workspace
@@ -45,8 +45,8 @@ jobs:
           $mod = Join-Path $bundle 'mods/herdrmd'
           New-Item -ItemType Directory -Force $mod | Out-Null
           Copy-Item target/debug/herdrmd.exe $mod
-          Copy-Item integrations/herdr/mods/herdrmd/main.js,integrations/herdr/mods/herdrmd/api.js,integrations/herdr/mods/herdrmd/mod.json $mod
-          Copy-Item integrations/herdr/mods/herdrmd/vault-view.js $mod
+          Copy-Item integrations/herdr/mods/herdrmd/*.js $mod
+          Copy-Item integrations/herdr/mods/herdrmd/mod.json $mod
           Copy-Item integrations/herdr/mods/herdrmd/obsidian.svg $mod
           foreach ($name in @('herdrmd-tabs', 'herdrmd-new-menu')) {
             $destination = Join-Path $bundle "mods/$name"
