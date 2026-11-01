@@ -9,7 +9,7 @@ pub fn run() -> Result<()> {
         println!(
             "herdrmd {} — task 00 bridge probe (no Vault operations)\n\
              Usage: herdrmd serve --state-dir <absolute scratch directory>\n\
-             Usage: herdrmd service <ensure|status|stop> --state-dir <directory>\n\
+             Usage: herdrmd service <ensure|wait|status|stop> --state-dir <directory>\n\
              Usage: herdrmd bridge report --state-dir <directory>",
             env!("CARGO_PKG_VERSION")
         );
@@ -30,7 +30,7 @@ pub fn run() -> Result<()> {
         [Some("serve"), ..] => ("serve", 1),
         [
             Some("service"),
-            Some(op @ ("ensure" | "status" | "stop")),
+            Some(op @ ("ensure" | "wait" | "status" | "stop")),
             ..,
         ] => (*op, 2),
         [Some("bridge"), Some("report"), ..] => ("report", 2),
@@ -48,6 +48,7 @@ pub fn run() -> Result<()> {
     }
     let result = match operation {
         "ensure" => service::ensure(&directory)?,
+        "wait" => service::wait(&directory)?,
         "status" => service::request(&directory, "/v1/health", false)?,
         "report" => service::request(&directory, "/v1/probe", false)?,
         "stop" => {

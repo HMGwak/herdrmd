@@ -67,6 +67,9 @@ fn detached_round_trip_authentication_and_shutdown() {
     let again = command(&directory, &["service", "ensure"]);
     assert_eq!(ensured["pid"], again["pid"]);
     assert_eq!(again["reused"], true);
+    let waited = command(&directory, &["service", "wait"]);
+    assert_eq!(waited["pid"], ensured["pid"]);
+    assert_eq!(waited["connection_file"], ensured["connection_file"]);
     let base = format!("http://127.0.0.1:{}", connection["port"]);
     let auth = format!("Bearer {token}");
     assert_eq!(
@@ -161,6 +164,35 @@ fn detached_round_trip_authentication_and_shutdown() {
         .output();
     // directory was removed with the temporary state; no service can be discovered there.
     assert!(!stopped.unwrap().status.success());
+}
+
+#[test]
+fn wait_observes_host_owned_service_without_spawning() {
+    let running = Running(tempfile::tempdir().unwrap());
+    let directory = running.0.path().to_path_buf();
+    let waiting_directory = directory.clone();
+    let waiter = std::thread::spawn(move || command(&waiting_directory, &["service", "wait"]));
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!directory.join("instance.lock").exists());
+    assert!(!directory.join("service.json").exists());
+
+    let mut server = Command::new(env!("CARGO_BIN_EXE_herdrmd"))
+        .args(["serve", "--state-dir"])
+        .arg(&directory)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let ready = waiter.join().unwrap();
+    assert_eq!(ready["pid"], server.id());
+    assert_eq!(ready["reused"], true);
+    assert_eq!(
+        command(&directory, &["service", "status"])["pid"],
+        server.id()
+    );
+    drop(running);
+    assert!(server.wait().unwrap().success());
 }
 
 #[test]

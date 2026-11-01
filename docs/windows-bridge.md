@@ -30,6 +30,10 @@ herdr-app do tab.new --name 'herdrmd Windows 00 bridge' --mod herdrmd
 
 현재 선택한 Space에 탭을 추가하며, 실행 파일과 상태 경로는 이 Windows 클라이언트에서 선택한다. 제품 Vault 탐색은 아직 없다.
 
+## 서비스 실행 방식
+
+Windows Herdr의 `exec`는 명령 종료 시 자식을 정리하는 Job Object를 사용한다. 따라서 mod는 로컬 herdr-core 0.1.16에서 `hc run --bg --no-parent --no-notify --rm -- <binary> serve --state-dir <state>`로 서비스를 관리하고 `service wait`로 준비를 확인한다. 이 과정은 새 사용자 탭을 만들지 않으며 서비스 종료 시 내부 실행 항목도 제거한다. 기존 서비스는 재사용하고, 서비스는 인증된 요청이 10분간 없으면 종료한다. 제한된 `exec` 안에서 직접 `service ensure`를 실행한 성공만으로 종료 후 생존을 판단하지 않는다.
+
 ## 확인과 종료
 
 화면에 `PASS · GET + POST + auth`가 나타나면 합성 한글을 직접 입력하고 `연결 검증 링크`를 클릭한다. `native changes`와 `link clicks`가 증가하는지 확인한다. 탭을 전환했다 돌아와 입력이 유지되는지도 확인한다.

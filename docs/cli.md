@@ -1,6 +1,8 @@
 # CLI 계약
 
-현재 구현한 명령은 `serve`, `service ensure/status/stop`, `bridge report`이며 모두 명시적인 `--state-dir <절대 임시 경로>`를 요구하는 00 연결 검증용이다. `bridge location`은 상태를 만들지 않고 이 클라이언트의 기본 OS 임시 경로를 JSON으로 반환한다. 인수 없는 실행은 도움말을 출력한다. [검증 절차](bridge-verification.md)를 참고한다. 나머지 아래 명령·JSON·종료 코드 계약은 구현 목표다.
+현재 구현한 명령은 `serve`, `service ensure/wait/status/stop`, `bridge report`이며 모두 명시적인 `--state-dir <절대 임시 경로>`를 요구하는 00 연결 검증용이다. `bridge location`은 상태를 만들지 않고 이 클라이언트의 기본 OS 임시 경로를 JSON으로 반환한다. 인수 없는 실행은 도움말을 출력한다. [검증 절차](bridge-verification.md)를 참고한다. 나머지 아래 명령·JSON·종료 코드 계약은 구현 목표다.
+
+`service wait`는 외부 호스트가 시작한 서비스의 준비만 최대 5초 확인하며 프로세스를 만들지 않는다. 연결 파일 경로·프로토콜·PID를 반환하고 `reused: true`는 이미 실행 중인 서비스에 연결했다는 뜻이다. Windows Herdr는 이 명령으로 core가 관리하는 `serve`의 준비를 확인한다.
 
 ```text
 herdrmd vault add/list

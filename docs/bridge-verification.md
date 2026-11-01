@@ -12,7 +12,7 @@ target/debug/herdrmd bridge report --state-dir /absolute/private/scratch/herdrmd
 target/debug/herdrmd service stop --state-dir /absolute/private/scratch/herdrmd-00
 ```
 
-`ensure`는 연결 파일 경로·프로토콜·PID·재사용 여부만 JSON으로 출력한다. 토큰은 출력하지 않는다. `serve`는 현재 실행 파일을 다시 실행하고 stdio를 null로 분리한다. Unix는 새 프로세스 그룹, Windows는 detached process 플래그를 사용한다. 인스턴스 File 잠금은 서비스가 유지한다. 10분간 인증된 요청이 없으면 종료한다.
+`ensure`는 연결 파일 경로·프로토콜·PID·재사용 여부만 JSON으로 출력한다. 토큰은 출력하지 않는다. `ensure`는 현재 실행 파일의 `serve`를 다시 실행하고 stdio를 null로 분리한다. Unix는 새 프로세스 그룹, Windows는 detached process 플래그를 사용한다. 인스턴스 File 잠금은 서비스가 유지한다. 10분간 인증된 요청이 없으면 종료한다.
 
 상태 폴더는 실험 전용이어야 한다. Unix에서는 폴더와 상태 파일에 0700/0600을 적용하므로 기존 사용자 폴더 자체를 지정하지 않는다. Windows의 명시적 ACL과 기본 사용자 상태 경로는 후속 작업이다.
 
@@ -25,7 +25,7 @@ herdr-app check /absolute/path/to/integrations/herdr/mods/herdrmd
 herdr-app do tab.new '{"name":"herdrmd · 00 bridge","space":"<existing space ID>","mod":"herdrmd","props":{"binary":"/absolute/path/to/target/debug/herdrmd","state_dir":"/absolute/private/scratch/herdrmd-00"}}'
 ```
 
-mod가 Herdr의 `exec`로 ensure를 실행한 뒤 연결 파일을 읽고 인증 GET, 무인증 401, 한글 POST echo를 검증한다. 토큰은 화면·명령 인수·일반 로그에 표시하지 않는다. 성공 화면에 PID와 UTF-8 바이트 수를 표시한다.
+macOS mod는 Herdr의 `exec`로 ensure를 실행한다. Windows mod는 로컬 core의 `hc run --bg --no-parent --no-notify --rm`으로 `serve`를 직접 시작하고 `service wait`로 최대 5초 준비를 확인한다. 정상 인스턴스가 있으면 재사용한다. 이후 연결 파일을 읽고 인증 GET, 무인증 401, 한글 POST echo를 검증한다. 토큰은 화면·명령 인수·일반 로그에 표시하지 않는다. 성공 화면에 PID와 UTF-8 바이트 수를 표시한다.
 
 mod·Rust 실행 파일·임시 상태 폴더는 **같은 Herdr 데스크톱 클라이언트 머신**에 설치해야 한다. 현재 exec에는 원격 대상이 없고 HTTP는 그 클라이언트의 loopback을 사용한다. 다른 컴퓨터의 core/터미널이나 탭 목록에 연결해도 Mac의 mod 파일·실행 파일 경로·loopback 서비스가 Windows로 배포되지는 않는다. Mac의 절대 경로를 props에 넣은 이 실험을 Windows 클라이언트 화면 검증으로 취급하지 않는다. 원격 서비스 연결·터널은 현재 범위에 없다.
 
@@ -43,7 +43,7 @@ Windows 설치는 [Windows bridge 안내](windows-bridge.md)를 따른다. 성�
 
 ## 자동 검증과 한계
 
-`cargo test --workspace --locked`는 별도 프로세스로 ensure를 실행해 반환 후 생존, 재사용, 인증 거부, Origin/Host 거부, 한글·emoji·CRLF/LF·끝 개행 보존, 본문 상한, 동시 ensure, stale 연결 복구, 두 번째 serve 거부와 종료를 검사한다. Unix에서는 의도적으로 상속 가능한 FD를 전달해 서버가 불필요한 출력 핸들을 유지하지 않는 회귀 검사도 수행한다. 테스트는 합성 데이터와 OS 임시 폴더만 사용한다.
+`cargo test --workspace --locked`는 별도 프로세스로 ensure를 실행해 반환 후 생존, 재사용, 인증 거부, Origin/Host 거부, 한글·emoji·CRLF/LF·끝 개행 보존, 본문 상한, 동시 ensure, stale 연결 복구, 두 번째 serve 거부와 종료를 검사한다. 외부 호스트가 지연 시작한 `serve`를 `wait`가 직접 프로세스를 만들지 않고 발견하는 검사도 포함한다. Unix에서는 의도적으로 상속 가능한 FD를 전달해 서버가 불필요한 출력 핸들을 유지하지 않는 회귀 검사도 수행한다. 테스트는 합성 데이터와 OS 임시 폴더만 사용한다.
 
 macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아 다른 launcher의 EOF를 막는 현상을 관찰했다. 따라서 단독 `serve` 프로세스가 상태 파일·잠금·런타임을 열기 전에 Unix의 상속 FD 3 이상을 닫는다. `pre_exec`에서 Rust 내부 exec 오류 전달 파이프를 닫는 방법은 사용하지 않는다. 이 진입점은 외부 FD 인수를 지원하지 않는다.
 
@@ -55,7 +55,7 @@ macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아
 
 | 항목 | 결과 |
 | --- | --- |
-| 로컬 fmt·check·build·test | Terra 재검증 통과. 통합 테스트 3개, 0.49초 |
+| 로컬 fmt·check·build·test | Terra의 기존 3개 검사 통과 후, lead가 wait 회귀를 포함한 통합 테스트 4개 재검증 통과 |
 | 소스·설치 mod 초기 검사 | herdr-app check 통과 |
 | 실제 Herdr exec → GET·POST·Authorization | 성공 화면과 Rust의 initialized·auth_rejection_observed·echo를 확인 |
 | Herdr exec 반환 뒤 서비스 생존 | 후속 CLI 조회에서 동일 PID 생존 확인 |
@@ -69,3 +69,5 @@ macOS 동시 실행 검증 중 stdio 외의 상속 파이프가 서버에 남아
 실행 중인 mod에서는 init의 첫 인수로 props를 받지 못하는 현상을 확인해 `herdr.props()`로 읽는다. 초기 check 성공만으로 비동기 초기화 성공을 판단하지 않는다. 이 실험에서 사용한 UI와 콜백은 제품 편집기나 복구 보장이 아니다.
 
 초기 Windows CI에서는 프로세스 테스트가 2분 제한에 걸렸다. Windows launcher를 `CreateProcessW`의 `bInheritHandles=FALSE`로 바꾸고 프로세스·스레드 HANDLE의 소유권을 관리한다. 상속 가능한 출력 HANDLE을 전달하는 Windows 회귀 검사와 한글·공백 상태 경로 검증을 포함해 재검증했다. 단순 빌드 성공을 Windows 실행 검증으로 보고하지 않는다.
+
+실제 Windows herdr-core 0.1.16의 `exec`는 kill-on-close Job Object (`0x2000`, breakaway 비허용) 안에서 실행되어 `ensure`의 detached 자식도 명령 반환 시 종료됐다. CI에서 HANDLE 상속 회귀가 통과해도 이 호스트 제약은 재현되지 않았다. core가 `serve`를 직접 소유하는 실행으로 바꾼 독립 실험에서는 별도 exec에서도 같은 PID가 생존하고 재사용·무인증 401·한글/emoji/CRLF echo(74 UTF-8 bytes)·정상 종료·임시 자료 정리가 통과했다. 이 실험은 실제 Windows mod 화면·물리 입력 검증과 구분한다.

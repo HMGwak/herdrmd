@@ -46,7 +46,7 @@ export default class BridgeProbe extends View {
           if (location.code !== 0) throw new Error("local bridge binary is unavailable");
           stateDir = JSON.parse(location.stdout).state_dir;
         }
-        this.api = await connect(binary, stateDir);
+        this.api = await connect(binary, stateDir, windows);
         await this.api.event("initialized", this.instance);
         await this.api.event("auth_rejection_observed", this.instance);
         await this.echo();

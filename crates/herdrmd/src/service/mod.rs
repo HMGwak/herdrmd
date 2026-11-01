@@ -97,27 +97,45 @@ pub fn request(directory: &Path, path: &str, post: bool) -> Result<Value> {
     Ok(response.body_mut().read_json()?)
 }
 
+fn ready(directory: &Path, reused: bool) -> Result<Value> {
+    let health = request(directory, "/v1/health", false)?;
+    if health["protocol_version"] != PROTOCOL || health["mode"] != "bridge-probe" {
+        return Err("unexpected service identity".into());
+    }
+    Ok(json!({
+        "protocol_version": PROTOCOL,
+        "connection_file": directory.join("service.json"),
+        "pid": health["pid"], "reused": reused
+    }))
+}
+
+// Readiness only: a host such as Herdr may own the long-lived process itself.
+// In particular, a Windows exec Job Object may forbid detached child survival.
+pub fn wait(directory: &Path) -> Result<Value> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(path) = directory.canonicalize() {
+            if let Ok(info) = ready(&path, true) {
+                return Ok(info);
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err("service not ready within 5 seconds".into());
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+}
+
 pub fn ensure(directory: &Path) -> Result<Value> {
     platform::prepare_directory(directory)?;
     let directory = directory.canonicalize()?;
-    let ready = |reused: bool| -> Result<Value> {
-        let health = request(&directory, "/v1/health", false)?;
-        if health["protocol_version"] != PROTOCOL || health["mode"] != "bridge-probe" {
-            return Err("unexpected service identity".into());
-        }
-        Ok(json!({
-            "protocol_version": PROTOCOL,
-            "connection_file": directory.join("service.json"),
-            "pid": health["pid"], "reused": reused
-        }))
-    };
-    if let Ok(info) = ready(true) {
+    if let Ok(info) = ready(&directory, true) {
         return Ok(info);
     }
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut child = platform::spawn_service(&directory)?;
     loop {
-        if let Ok(info) = ready(false) {
+        if let Ok(info) = ready(&directory, false) {
             // A concurrent ensure may have won. Reap our losing launcher if it exited.
             let _ = child.try_wait();
             return Ok(info);
