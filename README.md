@@ -2,7 +2,9 @@
 
 Herdr 안에서 Obsidian Vault의 Markdown을 읽고 편집하고, 에이전트가 독립적인 CLI로 같은 Vault에 접근하도록 만드는 Rust 프로젝트다. macOS에서 먼저 사용하며 Windows 빌드와 테스트를 함께 유지한다. Herdr 화면 연결에는 얇은 JavaScript mod를 사용한다.
 
-현재는 **00 연결 검증용 HTTP 서비스와 Herdr mod**를 구현하는 단계다. 인증된 GET·한글 POST echo, 분리 실행·재사용·종료와 UI 이벤트 관찰만 제공한다. Vault 접근·파일 저장·일반 에이전트 CLI·초안은 아직 구현하지 않았다.
+현재는 **읽기 전용 Vault 연결과 00 HTTP 연결 probe**를 제공한다. Vault 등록·폴더 목록·Markdown 원문 읽기와 BOM·줄바꿈·BLAKE3 revision 조회를 구현했다. Herdr에서 폴더를 탐색하고 문서를 읽을 수 있다. 저장·검색·위키링크 해석·초안과 완성된 에이전트 CLI는 후속 범위다.
+
+Mac 볼트를 Windows Herdr에서 보는 절차와 읽기 범위는 [개인 Vault 연결](docs/vault-connection.md)을 따른다. 문서는 원래 Mac에 두고 기존 core 머신 연결을 통해 읽는다.
 
 Windows에서 `no mod folder`가 보이면 [Windows 설치 안내](docs/windows-bridge.md)를 따른다. mod는 각 데스크톱 클라이언트에 설치해야 하며, Mac의 Space·탭에 연결하는 것만으로 Windows에 설치되지는 않는다.
 

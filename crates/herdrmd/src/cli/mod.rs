@@ -7,7 +7,11 @@ pub fn run() -> Result<()> {
     let words: Vec<_> = args.iter().map(|arg| arg.to_str()).collect();
     if args.is_empty() || words == [Some("--help")] {
         println!(
-            "herdrmd {} — task 00 bridge probe (no Vault operations)\n\
+            "herdrmd {} — read-only Vault browser and bridge probe\n\
+             Usage: herdrmd vault add <name> <absolute Vault path>\n\
+             Usage: herdrmd vault list\n\
+             Usage: herdrmd files/read --vault <name> --path <Vault-relative path>\n\
+             Usage: herdrmd paths\n\
              Usage: herdrmd serve --state-dir <absolute scratch directory>\n\
              Usage: herdrmd service <ensure|wait|status|stop> --state-dir <directory>\n\
              Usage: herdrmd bridge report --state-dir <directory>",
@@ -18,6 +22,12 @@ pub fn run() -> Result<()> {
     if words == [Some("--version")] {
         println!("herdrmd {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
+    }
+    if matches!(
+        words.first(),
+        Some(Some("vault" | "files" | "read" | "paths"))
+    ) {
+        return vault_command(&args);
     }
     if words == [Some("bridge"), Some("location")] {
         println!(
@@ -58,5 +68,38 @@ pub fn run() -> Result<()> {
         _ => unreachable!(),
     };
     println!("{}", serde_json::to_string(&result)?);
+    Ok(())
+}
+
+fn vault_command(args: &[std::ffi::OsString]) -> Result<()> {
+    use herdrmd_core::{document, platform, vault::Registry};
+    let mut config = platform::user_directories()?.config;
+    let mut args = args.to_vec();
+    if let Some(index) = args.iter().position(|arg| arg == "--config-dir") {
+        if index + 2 != args.len() {
+            return Err("--config-dir must be the last option".into());
+        }
+        config = PathBuf::from(&args[index + 1]);
+        if !config.is_absolute() {
+            return Err("config directory must be absolute".into());
+        }
+        args.truncate(index);
+    }
+    let words: Vec<_> = args.iter().map(|arg| arg.to_str()).collect();
+    let value = match words.as_slice() {
+        [Some("paths")] => serde_json::to_value(platform::user_directories()?)?,
+        [Some("vault"), Some("list")] => serde_json::to_value(Registry::load(&config)?)?,
+        [Some("vault"), Some("add"), Some(name), Some(_)] => {
+            serde_json::to_value(Registry::add(&config, name, &PathBuf::from(&args[3]))?)?
+        }
+        [Some(operation @ ("files" | "read")), Some("--vault"), Some(vault), Some("--path"), Some(path)] => {
+            let registry = Registry::load(&config)?;
+            let vault = registry.get(vault)?;
+            if *operation == "files" { serde_json::to_value(vault.list(path)?)? }
+            else { serde_json::to_value(document::read(vault, path)?)? }
+        }
+        _ => return Err("usage: vault add <name> <absolute path> | vault list | files/read --vault <name> --path <relative path> | paths; optional --config-dir <absolute path>".into()),
+    };
+    println!("{}", serde_json::to_string(&value)?);
     Ok(())
 }

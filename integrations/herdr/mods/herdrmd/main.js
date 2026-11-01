@@ -3,6 +3,7 @@ import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import process from "process";
 import { appHome, exec, nextCommand, props, theme } from "herdr";
 import { connect } from "./api.js";
+import { VaultReader } from "./vault-view.js";
 
 const SAMPLE = "한글 연결 검증 — 안녕하세요 🌿\n둘째 줄과 공백을 그대로 보존합니다.\n";
 const PROGRAMMATIC = "자동 입력 검증 — Rust ↔ Herdr 🌿\r\n마지막 개행도 유지합니다.\r\n";
@@ -10,6 +11,10 @@ const PROGRAMMATIC = "자동 입력 검증 — Rust ↔ Herdr 🌿\r\n마지막 
 export default class BridgeProbe extends View {
   init(_props, cx) {
     const options = props() || {};
+    if (options.mode === "vault") {
+      this.reader = new VaultReader(options, cx);
+      return;
+    }
     this.instance = `bridge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.status = "Starting task 00 bridge probe…";
     this.changes = 0;
@@ -86,6 +91,7 @@ export default class BridgeProbe extends View {
   }
 
   async close(_cx) {
+    if (this.reader) { this.reader.close(); return; }
     // Start cleanup here. Herdr allows only a best-effort 250 ms close budget.
     try {
       if (this.api) await this.api.event("closed", this.instance);
@@ -95,6 +101,7 @@ export default class BridgeProbe extends View {
   }
 
   render(_cx) {
+    if (this.reader) return this.reader.render(_cx);
     const t = theme();
     return v_flex().id("herdrmd-bridge").size_full().p(16).gap(10)
       .bg(t.surface).text_color(t.foreground)
